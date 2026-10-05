@@ -39,3 +39,5 @@ apps/wacrm/.next/
 *.njsproj
 *.sln
 *.sw?
+
+.vercel

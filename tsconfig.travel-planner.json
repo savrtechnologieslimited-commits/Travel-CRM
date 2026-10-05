@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "noUncheckedIndexedAccess": false,
+    "exactOptionalPropertyTypes": false
+  },
+  "include": [
+    "src/lib/travel-planner.ts",
+    "src/lib/travel-planner-engine/**/*.ts",
+    "scripts/travel-planner-live-smoke.ts"
+  ]
+}

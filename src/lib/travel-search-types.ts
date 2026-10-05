@@ -1,0 +1,20 @@
+export type LiveFlightOffer = {
+  id: string;
+  airline: string;
+  flight_number: string;
+  from: string;
+  to: string;
+  departure_at: string;
+  arrival_at: string;
+  return_from?: string;
+  return_to?: string;
+  return_departure_at?: string;
+  return_arrival_at?: string;
+  return_flight_number?: string;
+  duration: string;
+  stops: number;
+  price: number;
+  currency: string;
+  cabin?: string;
+};
+

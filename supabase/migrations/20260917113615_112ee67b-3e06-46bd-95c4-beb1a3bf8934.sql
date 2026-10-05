@@ -1,0 +1,1 @@
+REVOKE EXECUTE ON FUNCTION public.whatsapp_touch_conversation() FROM anon, authenticated, PUBLIC;

@@ -1,0 +1,18 @@
+version: "3.9"
+
+services:
+  ocr-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: travel-ocr-service
+    ports:
+      - "8001:8001"
+    environment:
+      OCR_HOST: "0.0.0.0"
+      OCR_PORT: "8001"
+      OCR_SERVICE_API_KEY: "change-this-to-a-strong-secret"
+      OCR_MAX_FILE_SIZE_BYTES: "10485760"
+      OCR_TIMEOUT_SECONDS: "45"
+      OCR_DOWNLOAD_TIMEOUT_SECONDS: "30"
+    restart: unless-stopped

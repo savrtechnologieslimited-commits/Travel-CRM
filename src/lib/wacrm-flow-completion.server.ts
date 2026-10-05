@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
+import { cleanEnvironmentValue } from "./environment-value";
 
 export const wacrmFlowCompletionSchema = z.object({
   version: z.literal(1),
@@ -49,7 +50,10 @@ export function verifyWacrmFlowCompletionSignature(input: {
     return false;
   }
 
-  const expected = createHmac("sha256", input.secret.trim())
+  const expected = createHmac(
+    "sha256",
+    cleanEnvironmentValue(input.secret) ?? "",
+  )
     .update(`${input.timestamp}.${input.body}`)
     .digest();
   const supplied = Buffer.from(input.signature, "hex");

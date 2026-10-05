@@ -7,6 +7,7 @@ import {
   type TeamTabPath,
 } from "./team-members";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
+import { cleanEnvironmentValue } from "@/lib/environment-value";
 
 const VALID_ROLES = new Set<StoredTeamRole>([...TEAM_ROLES, "developer"]);
 const VALID_TABS = new Set<string>(TEAM_TAB_PATHS);
@@ -195,8 +196,8 @@ export async function createTeamMember(untrustedInput: NewTeamMemberInput) {
 }
 
 function createPublicAuthClient() {
-  const url = process.env["SUPABASE_URL"]?.trim();
-  const key = process.env["SUPABASE_PUBLISHABLE_KEY"]?.trim();
+  const url = cleanEnvironmentValue(process.env["SUPABASE_URL"]);
+  const key = cleanEnvironmentValue(process.env["SUPABASE_PUBLISHABLE_KEY"]);
   if (!url || !key) throw new Error("Supabase sign-in is not configured.");
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },

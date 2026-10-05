@@ -3,6 +3,7 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { filterAssignmentsToBusinessVisibleUsers } from "@/lib/business-visible-users";
 import { getBusinessVisibleEmployeeIds } from "@/lib/business-visible-users.server";
+import { cleanEnvironmentValue } from "@/lib/environment-value";
 import {
   readWacrmFlowCompletionBody,
   verifyWacrmFlowCompletionSignature,
@@ -13,7 +14,7 @@ const destinationLookupSchema = z.object({
 });
 
 async function lookupDestinations(request: Request): Promise<Response> {
-  const secret = process.env["WACRM_BRIDGE_SECRET"]?.trim();
+  const secret = cleanEnvironmentValue(process.env["WACRM_BRIDGE_SECRET"]);
   if (!secret || Buffer.byteLength(secret) < 32) {
     console.error("[wacrm-destinations] WACRM_BRIDGE_SECRET is not configured.");
     return Response.json({ error: "Integration is not configured." }, { status: 503 });

@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import type { Json } from "@/integrations/supabase/types";
+import { cleanEnvironmentValue } from "@/lib/environment-value";
 import {
   readWacrmFlowCompletionBody,
   verifyWacrmFlowCompletionSignature,
@@ -8,7 +9,7 @@ import {
 } from "@/lib/wacrm-flow-completion.server";
 
 async function receiveFlowCompletion(request: Request): Promise<Response> {
-  const secret = process.env["WACRM_BRIDGE_SECRET"]?.trim();
+  const secret = cleanEnvironmentValue(process.env["WACRM_BRIDGE_SECRET"]);
   if (!secret || Buffer.byteLength(secret) < 32) {
     console.error("[wacrm-flow-completed] WACRM_BRIDGE_SECRET is not configured.");
     return Response.json({ error: "Integration is not configured." }, { status: 503 });

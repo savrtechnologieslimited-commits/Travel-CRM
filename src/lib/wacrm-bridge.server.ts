@@ -1,4 +1,5 @@
 import { createHmac, randomUUID } from "node:crypto";
+import { cleanEnvironmentValue } from "./environment-value";
 
 type WacrmBridgeClaims = {
   version: 1;
@@ -46,7 +47,7 @@ function signBridgeToken(
     record?: WacrmBridgeClaims["record"];
   },
 ): string {
-  const secret = process.env["WACRM_BRIDGE_SECRET"]?.trim();
+  const secret = cleanEnvironmentValue(process.env["WACRM_BRIDGE_SECRET"]);
   if (!secret || Buffer.byteLength(secret) < 32) {
     throw new Error("WACRM_BRIDGE_SECRET must contain at least 32 bytes.");
   }

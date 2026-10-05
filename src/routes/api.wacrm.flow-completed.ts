@@ -8,7 +8,7 @@ import {
 } from "@/lib/wacrm-flow-completion.server";
 
 async function receiveFlowCompletion(request: Request): Promise<Response> {
-  const secret = process.env["WACRM_BRIDGE_SECRET"];
+  const secret = process.env["WACRM_BRIDGE_SECRET"]?.trim();
   if (!secret || Buffer.byteLength(secret) < 32) {
     console.error("[wacrm-flow-completed] WACRM_BRIDGE_SECRET is not configured.");
     return Response.json({ error: "Integration is not configured." }, { status: 503 });

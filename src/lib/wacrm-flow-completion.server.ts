@@ -49,7 +49,7 @@ export function verifyWacrmFlowCompletionSignature(input: {
     return false;
   }
 
-  const expected = createHmac("sha256", input.secret)
+  const expected = createHmac("sha256", input.secret.trim())
     .update(`${input.timestamp}.${input.body}`)
     .digest();
   const supplied = Buffer.from(input.signature, "hex");

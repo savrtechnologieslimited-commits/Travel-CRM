@@ -46,7 +46,7 @@ function signBridgeToken(
     record?: WacrmBridgeClaims["record"];
   },
 ): string {
-  const secret = process.env["WACRM_BRIDGE_SECRET"];
+  const secret = process.env["WACRM_BRIDGE_SECRET"]?.trim();
   if (!secret || Buffer.byteLength(secret) < 32) {
     throw new Error("WACRM_BRIDGE_SECRET must contain at least 32 bytes.");
   }

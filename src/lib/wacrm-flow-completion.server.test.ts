@@ -38,6 +38,18 @@ describe("WACRM flow completion request", () => {
     ).toBe(true);
   });
 
+  it("ignores surrounding whitespace on the configured bridge secret", () => {
+    expect(
+      verifyWacrmFlowCompletionSignature({
+        body,
+        timestamp,
+        signature,
+        secret: ` \r\n${secret}\r\n `,
+        nowMilliseconds: Number(timestamp) * 1000,
+      }),
+    ).toBe(true);
+  });
+
   it("rejects changed payloads, invalid signatures, and expired timestamps", () => {
     expect(
       verifyWacrmFlowCompletionSignature({

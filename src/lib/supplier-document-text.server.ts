@@ -1,4 +1,8 @@
-import { PDFParse } from "pdf-parse";
+import {
+  DOMMatrix as CanvasDOMMatrix,
+  ImageData as CanvasImageData,
+  Path2D as CanvasPath2D,
+} from "@napi-rs/canvas";
 import mammoth from "mammoth";
 import { ItineraryGenerationError } from "./ai-itinerary-generation.server";
 import type { SupplierDocumentInput } from "./ai-supplier-itinerary-import.server";
@@ -24,6 +28,28 @@ export async function extractSupplierDocumentTextFromFile(input: SupplierDocumen
 
   try {
     if (name.endsWith(".pdf") || mimeType === "application/pdf") {
+      if (!globalThis.DOMMatrix) {
+        Object.defineProperty(globalThis, "DOMMatrix", {
+          configurable: true,
+          value: CanvasDOMMatrix,
+          writable: true,
+        });
+      }
+      if (!globalThis.ImageData) {
+        Object.defineProperty(globalThis, "ImageData", {
+          configurable: true,
+          value: CanvasImageData,
+          writable: true,
+        });
+      }
+      if (!globalThis.Path2D) {
+        Object.defineProperty(globalThis, "Path2D", {
+          configurable: true,
+          value: CanvasPath2D,
+          writable: true,
+        });
+      }
+      const { PDFParse } = await import("pdf-parse");
       const parser = new PDFParse({ data: buffer });
       const result = await parser.getText();
       await parser.destroy();

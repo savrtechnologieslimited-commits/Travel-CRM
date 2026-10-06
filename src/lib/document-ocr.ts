@@ -20,6 +20,12 @@ export type DocumentExtractionInput = {
   }>;
 };
 
+export type DocumentExtractionProgress = {
+  stage: "reading_pages" | "loading_ocr" | "recognizing";
+  page?: number;
+  totalPages?: number;
+};
+
 export type ClassifiedDocumentResult = {
   documentType: string;
   confidence: number;
@@ -487,7 +493,34 @@ async function renderPdfPageToCanvas(page: any): Promise<{ canvas: HTMLCanvasEle
   return { canvas, width: viewport.width, height: viewport.height };
 }
 
-async function extractBrowserPdfText(fileName: string, mimeType: string, fileBuffer: Uint8Array): Promise<DocumentExtractionResult | null> {
+type BrowserOcrEngine = Awaited<ReturnType<typeof import("@paddleocr/paddleocr-js").PaddleOCR.create>>;
+
+let browserOcrEnginePromise: Promise<BrowserOcrEngine> | null = null;
+
+function getBrowserOcrEngine(): Promise<BrowserOcrEngine> {
+  if (!browserOcrEnginePromise) {
+    browserOcrEnginePromise = import("@paddleocr/paddleocr-js")
+      .then(({ PaddleOCR }) =>
+        PaddleOCR.create({
+          lang: "en",
+          ocrVersion: "PP-OCRv5",
+          ortOptions: { backend: "wasm" },
+        }),
+      )
+      .catch((error: unknown) => {
+        browserOcrEnginePromise = null;
+        throw error;
+      });
+  }
+  return browserOcrEnginePromise;
+}
+
+async function extractBrowserPdfText(
+  fileName: string,
+  mimeType: string,
+  fileBuffer: Uint8Array,
+  onProgress?: (progress: DocumentExtractionProgress) => void,
+): Promise<DocumentExtractionResult | null> {
   if (!isBrowserRuntime()) return null;
   const lowerName = fileName.toLowerCase();
   if (!(lowerName.endsWith(".pdf") || mimeType === "application/pdf")) return null;
@@ -500,8 +533,10 @@ async function extractBrowserPdfText(fileName: string, mimeType: string, fileBuf
     const pages: OcrPage[] = [];
     const nativeFragments: OCRFragment[] = [];
     const ocrFragments: OCRFragment[] = [];
+    let ocr: BrowserOcrEngine | null = null;
 
     for (let index = 1; index <= document.numPages; index += 1) {
+      onProgress?.({ stage: "reading_pages", page: index, totalPages: document.numPages });
       const page = await document.getPage(index);
       const viewport = page.getViewport({ scale: 1 });
       const textContent = await page.getTextContent();
@@ -515,8 +550,11 @@ async function extractBrowserPdfText(fileName: string, mimeType: string, fileBuf
       if (!nativeText || nativeText.length < 12) {
         const rendered = await renderPdfPageToCanvas(page);
         if (!rendered) continue;
-        const { PaddleOCR } = await import("@paddleocr/paddleocr-js");
-        const ocr = await PaddleOCR.create({ lang: "en", ocrVersion: "PP-OCRv5", ortOptions: { backend: "wasm" } });
+        if (!ocr) {
+          onProgress?.({ stage: "loading_ocr", page: index, totalPages: document.numPages });
+          ocr = await getBrowserOcrEngine();
+        }
+        onProgress?.({ stage: "recognizing", page: index, totalPages: document.numPages });
         const blob = await new Promise<Blob>((resolve) => rendered.canvas.toBlob((value) => resolve(value ?? new Blob([], { type: "image/png" })), "image/png", 0.92));
         const [result] = await ocr.predict(blob);
         const recognized = Array.isArray(result?.items)
@@ -545,18 +583,20 @@ async function extractBrowserPdfText(fileName: string, mimeType: string, fileBuf
   }
 }
 
-async function extractBrowserImageText(fileName: string, mimeType: string, fileBuffer: Uint8Array): Promise<DocumentExtractionResult | null> {
+async function extractBrowserImageText(
+  fileName: string,
+  mimeType: string,
+  fileBuffer: Uint8Array,
+  onProgress?: (progress: DocumentExtractionProgress) => void,
+): Promise<DocumentExtractionResult | null> {
   if (!isBrowserRuntime()) return null;
   const lowerName = fileName.toLowerCase();
   const imageLike = lowerName.match(/\.(png|jpg|jpeg|bmp|tiff|webp)$/i) || mimeType.startsWith("image/");
   if (!imageLike) return null;
   try {
-    const { PaddleOCR } = await import("@paddleocr/paddleocr-js");
-    const ocr = await PaddleOCR.create({
-      lang: "en",
-      ocrVersion: "PP-OCRv5",
-      ortOptions: { backend: "wasm" },
-    });
+    onProgress?.({ stage: "loading_ocr", page: 1, totalPages: 1 });
+    const ocr = await getBrowserOcrEngine();
+    onProgress?.({ stage: "recognizing", page: 1, totalPages: 1 });
     const [result] = await ocr.predict(fileBuffer instanceof Blob ? fileBuffer : new Blob([fileBuffer], { type: mimeType || "application/octet-stream" }));
     const fragments = Array.isArray(result?.items)
       ? result.items.map((item: any) => normalizeOcrFragment(item, 1)).filter((item): item is OCRFragment => Boolean(item))
@@ -579,7 +619,10 @@ async function extractBrowserImageText(fileName: string, mimeType: string, fileB
   }
 }
 
-export async function extractDocumentInBrowser(input: DocumentExtractionInput): Promise<DocumentExtractionResult | null> {
+export async function extractDocumentInBrowser(
+  input: DocumentExtractionInput,
+  onProgress?: (progress: DocumentExtractionProgress) => void,
+): Promise<DocumentExtractionResult | null> {
   if (!isBrowserRuntime()) return null;
   const directText = normalizeText(input.sourceText);
   if (directText) {
@@ -595,9 +638,9 @@ export async function extractDocumentInBrowser(input: DocumentExtractionInput): 
   const fileName = input.fileName ?? "document";
   const mimeType = input.mimeType ?? "application/octet-stream";
   const bytes = file instanceof Uint8Array ? file : new Uint8Array(file);
-  const pdfText = await extractBrowserPdfText(fileName, mimeType, bytes);
+  const pdfText = await extractBrowserPdfText(fileName, mimeType, bytes, onProgress);
   if (pdfText?.text.trim()) return pdfText;
-  const imageText = await extractBrowserImageText(fileName, mimeType, bytes);
+  const imageText = await extractBrowserImageText(fileName, mimeType, bytes, onProgress);
   if (imageText?.text.trim()) return imageText;
   return null;
 }
@@ -632,9 +675,12 @@ export function classifyDocumentText(text: string): ClassifiedDocumentResult {
   return { documentType: "other", confidence: 0.4, reason: "Document type could not be confidently inferred." };
 }
 
-export async function extractDocumentCandidate(input: DocumentExtractionInput): Promise<DocumentExtractionResult> {
+export async function extractDocumentCandidate(
+  input: DocumentExtractionInput,
+  onProgress?: (progress: DocumentExtractionProgress) => void,
+): Promise<DocumentExtractionResult> {
   if (isBrowserRuntime()) {
-    const browser = await extractDocumentInBrowser(input);
+    const browser = await extractDocumentInBrowser(input, onProgress);
     if (browser?.text?.trim()) {
       return browser;
     }

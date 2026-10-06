@@ -6303,7 +6303,7 @@ function ItineraryBuilderPage() {
     fileBase64?: string;
   }): Promise<string | null> {
     setSaving(true);
-    setMessage(null);
+    setMessage("Opening supplier document…");
     try {
       const browserRuntime = isBrowserRuntime() && typeof atob === "function";
       let extractedText: string | null = null;
@@ -6316,6 +6316,18 @@ function ItineraryBuilderPage() {
           fileName: input.fileName,
           mimeType: input.mimeType ?? "application/octet-stream",
           file: bytes as unknown as Buffer,
+        }, (progress) => {
+          const pageLabel =
+            progress.page && progress.totalPages
+              ? `Page ${progress.page} of ${progress.totalPages}`
+              : "PDF";
+          if (progress.stage === "loading_ocr") {
+            setMessage("Loading on-device OCR engine. The first scanned document can take longer.");
+          } else if (progress.stage === "recognizing") {
+            setMessage(`Extracting text from ${pageLabel}…`);
+          } else {
+            setMessage(`Reading ${pageLabel}…`);
+          }
         });
         extractedText = candidate.text.trim();
         if (!extractedText && browserRuntime) {

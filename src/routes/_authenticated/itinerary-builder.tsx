@@ -4936,12 +4936,7 @@ function ItineraryBuilderPage() {
     const pricingDefaults = appSettings.data?.find((setting) => setting.key === "pricing")
       ?.value as Record<string, unknown> | undefined;
     const markup = Number(pricingDefaults?.["default_markup_pct"] ?? 12);
-    const destinationScope = destinations.find(
-      (destination) => destination.id === form.destination_id,
-    )?.scope;
-    const scope = linkedLead?.scope ?? destinationScope;
-    const gstKey = scope === "international" ? "gst_international_pct" : "gst_domestic_pct";
-    const gst = Number(pricingDefaults?.[gstKey] ?? 5);
+    const gst = Number(pricingDefaults?.["gst_domestic_pct"] ?? 5);
     const markupPercentage = Number.isFinite(markup) ? markup : 12;
     const gstPercentage = Number.isFinite(gst) ? gst : 5;
 

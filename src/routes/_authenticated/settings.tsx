@@ -81,7 +81,6 @@ type AgencyForm = {
 type PricingForm = {
   default_markup_pct: string;
   gst_domestic_pct: string;
-  gst_international_pct: string;
   service_charge: string;
   quotation_validity_days: string;
 };
@@ -120,7 +119,6 @@ function SettingsPage() {
   const [pricing, setPricing] = useState<PricingForm>({
     default_markup_pct: "12",
     gst_domestic_pct: "5",
-    gst_international_pct: "5",
     service_charge: "0",
     quotation_validity_days: "7",
   });
@@ -142,9 +140,12 @@ function SettingsPage() {
     if (pricingValue) {
       setPricing((p) => ({
         ...p,
-        ...(Object.fromEntries(
-          Object.entries(pricingValue).map(([k, v]) => [k, String(v ?? "")]),
-        ) as PricingForm),
+        default_markup_pct: String(pricingValue.default_markup_pct ?? p.default_markup_pct),
+        gst_domestic_pct: String(pricingValue.gst_domestic_pct ?? p.gst_domestic_pct),
+        service_charge: String(pricingValue.service_charge ?? p.service_charge),
+        quotation_validity_days: String(
+          pricingValue.quotation_validity_days ?? p.quotation_validity_days,
+        ),
       }));
     }
   }, [settings.dataUpdatedAt]);
@@ -279,20 +280,11 @@ function SettingsPage() {
                   onChange={(e) => setPricing({ ...pricing, service_charge: e.target.value })}
                 />
               </Field>
-              <Field label="GST % — domestic package">
+              <Field label="GST %">
                 <Input
                   type="number"
                   value={pricing.gst_domestic_pct}
                   onChange={(e) => setPricing({ ...pricing, gst_domestic_pct: e.target.value })}
-                />
-              </Field>
-              <Field label="GST % — international package">
-                <Input
-                  type="number"
-                  value={pricing.gst_international_pct}
-                  onChange={(e) =>
-                    setPricing({ ...pricing, gst_international_pct: e.target.value })
-                  }
                 />
               </Field>
               <Field label="Quotation validity (days)">
@@ -315,9 +307,12 @@ function SettingsPage() {
                 onClick={() =>
                   saveSetting.mutate({
                     key: "pricing",
-                    value: Object.fromEntries(
-                      Object.entries(pricing).map(([k, v]) => [k, Number(v) || 0]),
-                    ),
+                    value: {
+                      default_markup_pct: Number(pricing.default_markup_pct) || 0,
+                      gst_domestic_pct: Number(pricing.gst_domestic_pct) || 0,
+                      service_charge: Number(pricing.service_charge) || 0,
+                      quotation_validity_days: Number(pricing.quotation_validity_days) || 0,
+                    },
                   })
                 }
               >

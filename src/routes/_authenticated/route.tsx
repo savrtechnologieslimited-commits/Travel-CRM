@@ -8,6 +8,7 @@ import {
 import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppShell } from "@/components/app-shell";
+import { CurrencyRatesProvider } from "@/components/currency-converter";
 import { useCurrentUserTabPermissions } from "@/lib/admin-data";
 
 let bootstrappedUserId: string | null = null;
@@ -62,7 +63,13 @@ export const Route = createFileRoute("/_authenticated")({
 function AuthenticatedLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
 
-  if (pathname === "/itinerary-builder") return <ItineraryBuilderAccess />;
+  if (pathname === "/itinerary-builder") {
+    return (
+      <CurrencyRatesProvider>
+        <ItineraryBuilderAccess />
+      </CurrencyRatesProvider>
+    );
+  }
 
   return (
     <AppShell>

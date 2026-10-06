@@ -22,6 +22,20 @@ export function itineraryDraftLatestKey(userId?: string | null) {
   return `savr-itinerary-last-draft:${userId || "anonymous"}`;
 }
 
+export function hasPendingItineraryGeneration(
+  params: URLSearchParams,
+  pendingStorageKeys: ReadonlySet<string>,
+) {
+  const generationDrafts: Array<[string, string]> = [
+    ["aiDraft", "itinerary-ai-draft"],
+    ["bookingDraft", "itinerary-booking-draft"],
+    ["supplierDraft", "itinerary-supplier-draft"],
+  ];
+  return generationDrafts.some(
+    ([queryKey, storageKey]) => params.has(queryKey) && pendingStorageKeys.has(storageKey),
+  );
+}
+
 export function itineraryDayTitleWithoutPrefix(title: string) {
   const trimmed = title.trim();
   return trimmed.replace(/^day\s+\d+\s*(?:[-–—:.)]\s*)/i, "").trim() || trimmed;

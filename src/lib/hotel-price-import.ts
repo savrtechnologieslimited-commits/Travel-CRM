@@ -33,6 +33,52 @@ function parsePrice(text: string): ImportedHotelPrice | null {
   return { amount, currency, basis };
 }
 
+function comparableHotelName(value: string): string[] {
+  return [...new Set(value.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [])]
+    .filter((token) => !/^(?:hotel|resort|lodge|inn|hostel|guesthouse|motel|the|spa|star|stars)$/.test(token));
+}
+
+export function sameSupplierHotelName(left: string, right: string): boolean {
+  const leftTokens = comparableHotelName(left);
+  const rightTokens = comparableHotelName(right);
+  const shared = leftTokens.filter((token) => rightTokens.includes(token)).length;
+  return leftTokens.join(" ") === rightTokens.join(" ")
+    || (Math.min(leftTokens.length, rightTokens.length) >= 2 && shared / Math.min(leftTokens.length, rightTokens.length) >= 0.65);
+}
+
+/** Extract explicitly named properties so supplier hotel rows survive even when AI omits stays. */
+export function extractSupplierHotelNames(sourceText: string): string[] {
+  const names: string[] = [];
+  const propertyPattern = /\b((?:[A-Z][\p{L}\p{N}&'’.-]*\s+){1,5}(?:[Hh]otels?|[Rr]esorts?|[Ll]odges?|[Ii]nns?|[Hh]ostels?|[Mm]otels?)(?:\s+[A-Z][\p{L}\p{N}&'’.-]*){0,2})/gu;
+  const explicitHotelLabel = /^\s*(?:hotel|accommodation|property)\s*[:#-]\s*(.+?)\s*$/i;
+  const addHotelName = (candidate: string | undefined) => {
+    const name = candidate
+      ?.replace(/\s+/g, " ")
+      ?.replace(/^\s*[•●▪◦·]\s*/, "")
+      .split(/[;,|]/, 1)[0]
+      .replace(/\s+\d+(?:\.\d+)?\s*\*.*$/, "")
+      .replace(/\s*\([^)]*\)\s*$/, "")
+      .replace(/[,:;.\s]+$/, "")
+      .trim();
+    if (!name || comparableHotelName(name).length < 2 || /^(?:the\s+)?hotel$/i.test(name)) return;
+    if (!names.some((existing) => sameSupplierHotelName(existing, name))) names.push(name);
+  };
+
+  for (const line of sourceText.replace(/\r\n?/g, "\n").split("\n")) {
+    const labeledName = explicitHotelLabel.exec(line)?.[1];
+    if (labeledName) addHotelName(labeledName);
+  }
+
+  const propertyText = sourceText
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .filter((line) => !/\b(?:transfer|airport|drive)\b/i.test(line))
+    .join("\n");
+  for (const match of propertyText.matchAll(propertyPattern)) addHotelName(match[1]);
+
+  return names;
+}
+
 /** Finds an explicitly stated rate near a known hotel name in supplier text. */
 export function findImportedHotelPrice(sourceText: string, hotelName: string): ImportedHotelPrice | null {
   const target = hotelName.trim().toLocaleLowerCase();

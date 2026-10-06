@@ -255,16 +255,17 @@ export function isBrowserRuntime(): boolean {
   return typeof window !== "undefined";
 }
 
-export function normalizePdfTextItem(item: any, pageNumber: number): OCRFragment | null {
+export function normalizePdfTextItem(item: any, pageNumber: number, pageHeight?: number): OCRFragment | null {
   if (!item || typeof item.str !== "string") return null;
   const text = item.str.trim();
   if (!text) return null;
 
   const transform = Array.isArray(item.transform) ? item.transform : [1, 0, 0, 1, 0, 0];
   const x = Number(transform[4] ?? 0);
-  const y = Number(transform[5] ?? 0);
+  const pdfY = Number(transform[5] ?? 0);
   const width = Number(item.width ?? 0) || 0;
   const height = Number(item.height ?? 0) || 0;
+  const y = pageHeight === undefined ? pdfY : pageHeight - pdfY - height;
   const boundingBox = { x, y, width, height };
   const polygon = [
     { x, y },
@@ -332,15 +333,22 @@ function isTermHeaderText(value: string): boolean {
 }
 
 function isOcrTermsNoise(value: string): boolean {
-  const text = value.trim();
-  return /^(?:day\s*\d+\b|hotels?\b|per adult\b|price in\b|price\b|room\b|sharing room\b|sngl\b|dbl\b|trpl\b)/i.test(text)
+  const text = value.trim().replace(/^[•●▪◦·]\s*/, "");
+  return !text
+    || /^(?:day\s*\d+\b|hotels?\b|per adult\b|price in\b|price\b|room\b|sharing room\b|sngl\b|dbl\b|trpl\b)/i.test(text)
     || /^(?:\d+(?:\.\d+)?\s*)?(?:usd|eur|gbp|inr|aed)\b/i.test(text)
     || /^(?:arrival|after breakfast|breakfast followed|overnight stay|return to|proceed for|enjoy the)\b/i.test(text);
+}
+
+function isOcrTermsSectionEnd(value: string): boolean {
+  return /^(?:hotels?|hotel rates|pricing|price details)\s*:?$/i.test(value.trim());
 }
 
 function normalizeOcrLineText(value: string): string {
   return value
     .replace(/\s+/g, " ")
+    .replace(/^[•●▪◦·]\s*/, "")
+    .replace(/([A-Za-z])\s+-\s+([A-Za-z])/g, "$1-$2")
     .replace(/\s+([,.;:])/g, "$1")
     .trim();
 }
@@ -357,15 +365,20 @@ function groupOcrFragmentsIntoLines(fragments: OCRFragment[]): Array<{ pageNumbe
 
   for (const [pageNumber, pageFragments] of [...byPage.entries()].sort(([left], [right]) => left - right)) {
     const sorted = [...pageFragments].sort((left, right) => left.centerY - right.centerY || left.centerX - right.centerX);
-    const rowSpacing = sorted.length > 1
-      ? sorted.reduce((max, fragment) => Math.max(max, fragment.boundingBox.height), 0) * 1.2
-      : 18;
 
     for (const fragment of sorted) {
       const existing = lines[lines.length - 1];
       const samePage = existing && existing.pageNumber === pageNumber;
-      const closeY = samePage && Math.abs(fragment.centerY - existing.centerY) <= Math.max(12, rowSpacing);
-      const closeX = samePage && Math.abs(fragment.centerX - existing.centerX) <= Math.max(24, Math.min(existing.boundingBox.width, fragment.boundingBox.width) * 0.75);
+      const verticalGap = samePage
+        ? fragment.boundingBox.y - (existing.boundingBox.y + existing.boundingBox.height)
+        : Number.POSITIVE_INFINITY;
+      const closeY = samePage && verticalGap <= Math.max(2, Math.min(existing.boundingBox.height, fragment.boundingBox.height) * 0.15);
+      const horizontalGap = samePage
+        ? fragment.boundingBox.x - (existing.boundingBox.x + existing.boundingBox.width)
+        : Number.POSITIVE_INFINITY;
+      const closeX = samePage
+        && fragment.centerX >= existing.centerX - 12
+        && horizontalGap <= Math.max(24, Math.min(existing.boundingBox.height, fragment.boundingBox.height) * 1.5);
       if (samePage && closeY && closeX && !isTermHeaderText(fragment.text) && !isTermHeaderText(existing.text)) {
         const mergedText = [existing.text, fragment.text].filter(Boolean).join(" ");
         const minX = Math.min(existing.boundingBox.x, fragment.boundingBox.x);
@@ -435,26 +448,54 @@ export function convertOcrFragmentsToSupplierTables(fragments: OCRFragment[]): S
       : ((maxX - minX) * 0.56) + minX;
 
     const rows: string[][] = [];
+    const rowCenters: number[] = [];
+    const rowHeights: number[] = [];
     const cells: SupplierTableCell[] = [];
     const termsStartY = hasExplicitTermHeaders
       ? Math.max(...headerFragments.map((line) => line.boundingBox.y + line.boundingBox.height))
       : Number.NEGATIVE_INFINITY;
+    const hasHotelRateHeader = lines.some((line) => /^per adult\b/i.test(line.text.trim()));
+    const termsEndY = lines.find((line) => line.centerY > termsStartY
+      && (isOcrTermsSectionEnd(line.text) && hasHotelRateHeader || /^per adult\b/i.test(line.text.trim())))?.centerY
+      ?? Number.POSITIVE_INFINITY;
 
     for (const line of lines) {
       if (isTermHeaderText(line.text)) continue;
       if (hasExplicitTermHeaders && line.centerY <= termsStartY) continue;
+      if (line.centerY >= termsEndY) continue;
       if (isOcrTermsNoise(line.text)) continue;
-      const leftText = line.centerX < splitX ? line.text : "";
-      const rightText = line.centerX >= splitX ? line.text : "";
-      if (!leftText && !rightText) continue;
-      const row: string[] = [leftText, rightText];
-      rows.push(row);
-      if (leftText) {
-        cells.push({ pageNumber, text: leftText, boundingBox: line.boundingBox, rowIndex: rows.length - 1, columnIndex: 0 });
+      const columnIndex = line.centerX < splitX ? 0 : 1;
+      const rowIndex = rows.length - 1;
+      const hasBullet = line.fragments.some((fragment) => /^[•●▪◦·]$/.test(fragment.text.trim()));
+      const sameVisualRow = rowIndex >= 0
+        && Math.abs(rowCenters[rowIndex]! - line.centerY) <= Math.max(4, Math.min(rowHeights[rowIndex]!, line.boundingBox.height) * 0.5)
+        && !rows[rowIndex]![columnIndex];
+      const previousCell = rowIndex >= 0 ? cells.find((cell) => cell.rowIndex === rowIndex && cell.columnIndex === columnIndex) : undefined;
+      const isWrappedCell = rowIndex >= 0 && !sameVisualRow && !hasBullet && previousCell
+        && line.centerY > rowCenters[rowIndex]!
+        && line.centerY - rowCenters[rowIndex]! <= Math.max(18, rowHeights[rowIndex]! * 1.5)
+        && /^[a-z]/.test(line.text)
+        && !/[.!?;:]$/.test(previousCell.text);
+      if (isWrappedCell) {
+        previousCell.text = `${previousCell.text} ${line.text}`;
+        previousCell.boundingBox = {
+          x: Math.min(previousCell.boundingBox.x, line.boundingBox.x),
+          y: Math.min(previousCell.boundingBox.y, line.boundingBox.y),
+          width: Math.max(previousCell.boundingBox.x + previousCell.boundingBox.width, line.boundingBox.x + line.boundingBox.width)
+            - Math.min(previousCell.boundingBox.x, line.boundingBox.x),
+          height: Math.max(previousCell.boundingBox.y + previousCell.boundingBox.height, line.boundingBox.y + line.boundingBox.height)
+            - Math.min(previousCell.boundingBox.y, line.boundingBox.y),
+        };
+        rows[rowIndex]![columnIndex] = previousCell.text;
+        continue;
       }
-      if (rightText) {
-        cells.push({ pageNumber, text: rightText, boundingBox: line.boundingBox, rowIndex: rows.length - 1, columnIndex: 1 });
+      const targetRowIndex = sameVisualRow ? rowIndex : rows.push(["", ""]) - 1;
+      if (!sameVisualRow) {
+        rowCenters[targetRowIndex] = line.centerY;
+        rowHeights[targetRowIndex] = line.boundingBox.height;
       }
+      rows[targetRowIndex]![columnIndex] = line.text;
+      cells.push({ pageNumber, text: line.text, boundingBox: line.boundingBox, rowIndex: targetRowIndex, columnIndex });
     }
 
     if (hasExplicitTermHeaders) previousTermPage = pageNumber;
@@ -541,7 +582,7 @@ async function extractBrowserPdfText(
       const viewport = page.getViewport({ scale: 1 });
       const textContent = await page.getTextContent();
       const pageNativeFragments = (textContent.items ?? [])
-        .map((item: any) => normalizePdfTextItem(item, index))
+        .map((item: any) => normalizePdfTextItem(item, index, viewport.height))
         .filter((item): item is OCRFragment => Boolean(item));
       nativeFragments.push(...pageNativeFragments);
       pages.push({ index: index - 1, width: viewport.width, height: viewport.height, confidence: 1 });

@@ -202,6 +202,52 @@ describe("itinerary image service", () => {
     }
   });
 
+  test("prefers a saved activity photo library image before a cached Google image", async () => {
+    const priorKey = process.env["GOOGLE_ITINERARY_IMAGES_API_KEY"];
+    const priorHotelKey = process.env["GOOGLE_MAPS_API_KEY"];
+    delete process.env["GOOGLE_ITINERARY_IMAGES_API_KEY"];
+    delete process.env["GOOGLE_MAPS_API_KEY"];
+    try {
+      const { addGoogleImagesToUnsavedItinerary } = await import("./itinerary-image-service.server");
+      const result = await addGoogleImagesToUnsavedItinerary(fakeSupabase({
+        activity_photo_library: [{
+          google_place_id: "ChIJlibrary",
+          place_name: "Gangaramaya Temple",
+          place_address: "Colombo",
+          storage_path: "activity-photo-library/gangaramaya.jpg",
+        }],
+        itinerary_place_image_cache: [{
+          normalized_query: "gangaramaya temple colombo",
+          query_text: "Gangaramaya Temple, Colombo",
+          google_place_id: "ChIJcached",
+          place_name: "Gangaramaya Temple",
+          google_photo_reference: "places/ChIJcached/photos/cached-photo",
+          attribution: [],
+          storage_path: "itinerary-place-images/cache/gangaramaya.jpg",
+          created_at: "2026-09-29T00:00:00Z",
+          updated_at: "2026-09-29T00:00:00Z",
+        }],
+      }), {
+        title: "Colombo city break",
+        destinationName: "Colombo",
+        days: [{
+          id: "draft-day-1",
+          day_number: 1,
+          title: "City tour",
+          items: [{ item_type: "ACTIVITY", title: "Gangaramaya Temple", location: "Colombo" }],
+        }],
+      }, async () => {
+        throw new Error("Google must not be called when Supabase has a saved photo");
+      });
+
+      expect(result.days[0]?.photo?.google_place_id).toBe("ChIJlibrary");
+      expect(result.days[0]?.photo?.storage_path).toBe("activity-photo-library/gangaramaya.jpg");
+    } finally {
+      if (priorKey !== undefined) process.env["GOOGLE_ITINERARY_IMAGES_API_KEY"] = priorKey;
+      if (priorHotelKey !== undefined) process.env["GOOGLE_MAPS_API_KEY"] = priorHotelKey;
+    }
+  });
+
   test("does not reuse the same cached place photo for multiple days", async () => {
     const priorKey = process.env["GOOGLE_ITINERARY_IMAGES_API_KEY"];
     const priorHotelKey = process.env["GOOGLE_MAPS_API_KEY"];

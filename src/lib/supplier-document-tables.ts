@@ -105,7 +105,9 @@ function mergeWrappedPageContinuation(previous: SupplierDocumentTable, next: Sup
     const touchesPageEdge = previousPageHeight > 0 && nextPageHeight > 0 && beforeBox && afterBox
       && beforeBox.y + beforeBox.height >= previousPageHeight * 0.78
       && afterBox.y <= nextPageHeight * 0.22;
-    const languageContinues = before.length > 12 && !/[.!?;:]$/.test(before) && /^(?:[a-z]|and\b|or\b|with\b|as\b|by\b|of\b|from\b|to\b)/i.test(after);
+    const endsWithContinuation = /\b(?:and|or|with|as|by|of|from|to|the|a|an)$/i.test(before);
+    const startsWithContinuation = /^[A-Za-z]/.test(after);
+    const languageContinues = before.length > 12 && !/[.!?;:]$/.test(before) && endsWithContinuation && startsWithContinuation;
     if (!before || !after || !touchesPageEdge || !languageContinues) continue;
     const rows = next.rows.map((row) => [...row]);
     const continuationRowHasOtherData = nextRow.some((cell, index) => index !== column && cell.trim());

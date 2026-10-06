@@ -372,13 +372,6 @@ async function addGoogleImagesToDays(
       for (const candidate of candidates) {
         const query = [candidate.place, candidate.locality].filter(Boolean).join(", ");
         const normalizedQuery = normalizeItineraryImageQuery(query);
-        // Always prefer our persistent Supabase photo cache; call Google only for a cache miss.
-        const cached = await findCachedImage(supabase, normalizedQuery);
-        if (cached) {
-          if (usedGooglePlaceIds.has(cached.google_place_id)) continue;
-          selected = { image: cacheToImage(cached), storagePath: cached.storage_path };
-          break;
-        }
         const { data: libraryPhoto, error: libraryPhotoError } = await supabase.from("activity_photo_library")
           .select("google_place_id,place_name,storage_path")
           .eq("place_name", candidate.place)
@@ -399,6 +392,13 @@ async function addGoogleImagesToDays(
             },
             storagePath: libraryPhoto.storage_path,
           };
+          break;
+        }
+        // Reuse prior Google results before spending another Places API request.
+        const cached = await findCachedImage(supabase, normalizedQuery);
+        if (cached) {
+          if (usedGooglePlaceIds.has(cached.google_place_id)) continue;
+          selected = { image: cacheToImage(cached), storagePath: cached.storage_path };
           break;
         }
         if (unavailableProviderError) throw new Error(unavailableProviderError);

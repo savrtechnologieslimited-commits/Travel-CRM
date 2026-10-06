@@ -156,4 +156,36 @@ describe("supplier document table extraction", () => {
     expect(first?.rows[0]?.[0]).toBe("Private intercity transfers, sightseeing and tours mentioned by Mercedes sprinter");
     expect(continuation?.rows).toEqual([]);
   });
+
+  test("does not join a new capitalized inclusion to a complete row at the page edge", () => {
+    const [, continuation] = propagateSupplierTableHeaders([
+      {
+        pageNumber: 1,
+        pageWidth: 600,
+        pageHeight: 800,
+        title: "Terms",
+        boundingBox: { x: 20, y: 100, width: 560, height: 680 },
+        columns: ["INCLUSIONS", "EXCLUSIONS"],
+        rows: [["Private intercity transfers, sightseeing and tours as mentioned by Mercedes sprinter", ""]],
+        cells: [
+          { pageNumber: 1, text: "Private intercity transfers, sightseeing and tours as mentioned by Mercedes sprinter", boundingBox: { x: 40, y: 765, width: 250, height: 24 }, rowIndex: 0, columnIndex: 0 },
+        ],
+      },
+      {
+        pageNumber: 2,
+        pageWidth: 600,
+        pageHeight: 800,
+        title: "Continuation",
+        boundingBox: { x: 21, y: 30, width: 558, height: 700 },
+        columns: [],
+        columnCount: 2,
+        rows: [["Heydar Aliyev Centre – Vintage Museum ticket", ""]],
+        cells: [
+          { pageNumber: 2, text: "Heydar Aliyev Centre – Vintage Museum ticket", boundingBox: { x: 40, y: 18, width: 240, height: 25 }, rowIndex: 0, columnIndex: 0 },
+        ],
+      },
+    ]);
+
+    expect(continuation?.rows).toEqual([["Heydar Aliyev Centre – Vintage Museum ticket", ""]]);
+  });
 });

@@ -76,6 +76,45 @@ TABLE: Package terms
     expect(result.tables).toEqual([]);
   });
 
+  test("adds overall hotel stays when the supplier names hotels but the AI omits accommodation items", async () => {
+    const result = await extractItineraryFromSupplierDocument({
+      sourceText: `Destination: Baku
+Day 1: Arrival in Baku
+Inclusions:
+• 6n Baku Marriott Hotel Boulevard,
+• 1 night at Qafqaz Tufandag Mountain Resort,
+Hotels Per adult price in SNGL room
+Marriott Boulevard hotel 5* (city view room)
+Qafqaz Tufandag Resort spa 5*`,
+    }, {
+      destinations: [{ id: "baku-id", name: "Baku" }],
+      provider: {
+        ...provider,
+        generateItinerary: async (input) => {
+          const generated = await provider.generateItinerary(input);
+          return {
+            ...generated,
+            draft: {
+              ...generated.draft,
+              days: generated.draft.days.map((day) => ({
+                ...day,
+                items: day.items.filter((item) => item.item_type !== "ACCOMMODATION"),
+              })),
+            },
+          };
+        },
+      },
+    });
+
+    const importedHotels = result.draft.days.flatMap((day) =>
+      day.items.filter((item) => item.item_type === "ACCOMMODATION"),
+    );
+    expect(importedHotels.map((item) => item.hotel_name)).toEqual([
+      "Baku Marriott Hotel Boulevard",
+      "Qafqaz Tufandag Mountain Resort",
+    ]);
+  });
+
   test("rejects empty and unsupported documents", async () => {
     await expect(extractSupplierDocumentText({ sourceText: " " })).rejects.toThrow("Paste supplier text");
     await expect(extractSupplierDocumentText({ fileName: "supplier.xlsx", mimeType: "application/vnd.ms-excel", fileBase64: Buffer.from("data").toString("base64") })).rejects.toThrow("text-readable");

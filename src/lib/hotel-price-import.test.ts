@@ -1,7 +1,36 @@
 import { describe, expect, test } from "bun:test";
-import { applyImportedHotelPrices, findImportedHotelPrice } from "./hotel-price-import";
+import { applyImportedHotelPrices, extractSupplierHotelNames, findImportedHotelPrice } from "./hotel-price-import";
 
 describe("supplier hotel price import", () => {
+  test("extracts named supplier hotels and deduplicates alternate table labels", () => {
+    expect(extractSupplierHotelNames([
+      "Day 7 – Baku to Gabala",
+      "Check in at Qafqaz Tufandag Mountain Resort. Overnight stay in Gabala.",
+      "• 6n Baku Marriott Hotel Boulevard,",
+      "Hotels Per adult price in SNGL room",
+      "Marriott Boulevard hotel 5* (city view room)",
+      "Qafqaz Tufandag Resort spa 5*",
+      "Private transfer from Gabala Hotel to Baku Airport.",
+    ].join("\n"))).toEqual([
+      "Qafqaz Tufandag Mountain Resort",
+      "Baku Marriott Hotel Boulevard",
+    ]);
+  });
+
+  test("extracts hotels from explicit hotel and accommodation labels even without a property suffix", () => {
+    expect(extractSupplierHotelNames([
+      "Hotel: The Grand Residency, Deluxe Room",
+      "Accommodation - Palm Retreat, breakfast included",
+      "Hotel: The Grand Residency",
+      "Check in at Qafqaz Tufandag",
+      "Mountain Resort.",
+    ].join("\n"))).toEqual([
+      "The Grand Residency",
+      "Palm Retreat",
+      "Qafqaz Tufandag Mountain Resort",
+    ]);
+  });
+
   test("reads currency and per-night rates next to a hotel", () => {
     expect(findImportedHotelPrice("Day 1\nHotel: ABC Beach Resort\nRate: ₹12,500 per night", "ABC Beach Resort")).toEqual({
       amount: 12500,

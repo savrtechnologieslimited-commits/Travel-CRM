@@ -6,6 +6,7 @@ import {
   type StoredTeamRole,
   type TeamTabPath,
 } from "./team-members";
+import { createSupabaseFetch } from "@/integrations/supabase/fetch";
 import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { cleanEnvironmentValue } from "@/lib/environment-value";
 
@@ -196,10 +197,15 @@ export async function createTeamMember(untrustedInput: NewTeamMemberInput) {
 }
 
 function createPublicAuthClient() {
-  const url = cleanEnvironmentValue(process.env["SUPABASE_URL"]);
-  const key = cleanEnvironmentValue(process.env["SUPABASE_PUBLISHABLE_KEY"]);
+  const url =
+    cleanEnvironmentValue(import.meta.env["VITE_SUPABASE_URL"]) ??
+    cleanEnvironmentValue(process.env["SUPABASE_URL"]);
+  const key =
+    cleanEnvironmentValue(import.meta.env["VITE_SUPABASE_PUBLISHABLE_KEY"]) ??
+    cleanEnvironmentValue(process.env["SUPABASE_PUBLISHABLE_KEY"]);
   if (!url || !key) throw new Error("Supabase sign-in is not configured.");
   return createClient(url, key, {
+    global: { fetch: createSupabaseFetch(key) },
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
 }

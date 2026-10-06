@@ -171,6 +171,7 @@ import {
   buildItineraryCopyTitle,
   buildItineraryLibrarySaveFields,
   buildItineraryTermsSnapshot,
+  hasPendingItineraryGeneration,
   itineraryBuilderUrl,
   itineraryDayTitleWithoutPrefix,
   itineraryDraftLatestKey,
@@ -349,9 +350,6 @@ function supplierDraftToDocumentText(draft: {
     notes?: string | null;
     items: Array<Record<string, unknown>>;
   }>;
-  inclusions: string[];
-  exclusions: string[];
-  cancellation_info: string | null;
 }) {
   const textValue = (value: unknown) => (typeof value === "string" ? value.trim() : "");
   const sections = draft.days.map((day, index) =>
@@ -371,9 +369,6 @@ function supplierDraftToDocumentText(draft: {
       .filter(Boolean)
       .join("\n"),
   );
-  if (draft.inclusions.length) sections.push(`Inclusions: ${draft.inclusions.join(", ")}`);
-  if (draft.exclusions.length) sections.push(`Exclusions: ${draft.exclusions.join(", ")}`);
-  if (draft.cancellation_info) sections.push(`Cancellation: ${draft.cancellation_info}`);
   return sections.join("\n\n");
 }
 
@@ -403,6 +398,8 @@ type TripForm = {
 type ItineraryDraftSnapshot = {
   form: TripForm;
   days: TripDay[];
+  quickPrompt?: string;
+  supplierDetails?: string;
   costLines: ItineraryCostLine[];
   previewPackageOptions?: ItineraryPreviewPackageOption[];
   selectedPreviewPackageId?: string | null;
@@ -1524,12 +1521,6 @@ function AiDayPlanPanel({
       {!canAddImages && (
         <p className="text-xs text-slate-500">
           Add itinerary days before searching for matching images.
-        </p>
-      )}
-      {canAddImages && (
-        <p className="text-xs text-slate-500">
-          Checks the saved photo library first, then searches Google Places for missing images.
-          Draft images stay with this itinerary and save with it.
         </p>
       )}
       {imageError && (
@@ -5998,6 +5989,7 @@ function ItineraryBuilderPage() {
   }
 
   function updateTermsFromAiDetails(text: string) {
+    setSupplierDetails(text);
     const extracted = extractItineraryTermsFromText(text) ?? {
       inclusions: "",
       exclusions: "",
@@ -7293,9 +7285,12 @@ function ItineraryBuilderPage() {
       const customerIdFromQuery = params.get("customerId");
       const leadIdFromQuery = params.get("leadId");
       const destinationId = params.get("destinationId");
-      const generatedDraftMode = Boolean(
-        params.get("aiDraft") || params.get("bookingDraft") || params.get("supplierDraft"),
+      const pendingGenerationKeys = new Set(
+        ["itinerary-ai-draft", "itinerary-booking-draft", "itinerary-supplier-draft"].filter(
+          (key) => Boolean(sessionStorage.getItem(key)),
+        ),
       );
+      const generatedDraftMode = hasPendingItineraryGeneration(params, pendingGenerationKeys);
       const authResult = await supabase.auth.getUser();
       if (cancelled) return;
       const userId = authResult.data.user?.id;
@@ -7451,6 +7446,8 @@ function ItineraryBuilderPage() {
             customer_quotes: normalizeItineraryCustomerQuotes(snapshot.form.customer_quotes),
           });
           setDays(snapshot.days);
+          setQuickPrompt(snapshot.quickPrompt ?? "");
+          setSupplierDetails(snapshot.supplierDetails ?? "");
           setCostLines(Array.isArray(snapshot.costLines) ? snapshot.costLines : []);
           setCopyMetadata(snapshot.copyMetadata ?? {});
           setPreviewPackageOptions(
@@ -7510,6 +7507,8 @@ function ItineraryBuilderPage() {
     const snapshot: ItineraryDraftSnapshot = {
       form,
       days,
+      quickPrompt,
+      supplierDetails,
       costLines,
       copyMetadata,
       previewPackageOptions,
@@ -7600,6 +7599,8 @@ function ItineraryBuilderPage() {
     previewPackageOptions,
     selectedPreviewPackageId,
     taxLines,
+    quickPrompt,
+    supplierDetails,
   ]);
 
   const itineraryTermsSnapshot = useMemo(

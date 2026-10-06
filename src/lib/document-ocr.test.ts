@@ -151,6 +151,56 @@ describe("document OCR pipeline", () => {
     });
   });
 
+  test("native PDF geometry uses top-down page coordinates for table reconstruction", () => {
+    const item = normalizePdfTextItem({
+      str: "INCLUSIONS",
+      transform: [1, 0, 0, 1, 100, 200],
+      width: 80,
+      height: 18,
+      hasEOL: false,
+    }, 1, 792);
+
+    expect(item).toMatchObject({
+      boundingBox: { x: 100, y: 574, width: 80, height: 18 },
+      centerY: 583,
+    });
+  });
+
+  test("native PDF terms tables exclude itinerary text and stop before a following hotel-rate section", () => {
+    const pdfText = (text: string, x: number, y: number, pageNumber: number, width = 180) =>
+      normalizePdfTextItem({
+        str: text,
+        transform: [1, 0, 0, 1, x, y],
+        width,
+        height: 18,
+      }, pageNumber, 792)!;
+    const fragments = [
+      pdfText("Day 1", 70, 698, 1),
+      pdfText("Arrival at Baku Airport and transfer to the hotel.", 70, 683, 1, 400),
+      pdfText("INCLUSIONS", 80, 223, 1),
+      pdfText("EXCLUSIONS", 384, 223, 1),
+      pdfText("7 night accommodation", 80, 206, 1),
+      pdfText("Meal (Lunch, dinner)", 384, 206, 1),
+      pdfText("Heydar Aliyev Centre – Vintage Museum ticket", 70, 713, 2, 320),
+      pdfText("Little Venice ticket", 70, 685, 2),
+      pdfText("Hotels", 70, 579, 2),
+      pdfText("Per adult price", 278, 579, 2),
+      pdfText("Marriott Boulevard hotel 5*", 70, 530, 2),
+      pdfText("840 USD", 289, 530, 2),
+      pdfText("Qafqaz Tufandag Resort spa 5*", 70, 498, 2),
+    ];
+    const tables = convertOcrFragmentsToSupplierTables(fragments);
+    const markdown = supplierTablesToMarkdown(tables);
+
+    expect(tables).toHaveLength(2);
+    expect(tables[0]?.rows).toContainEqual(["7 night accommodation", "Meal (Lunch, dinner)"]);
+    expect(markdown).not.toContain("Arrival at Baku Airport");
+    expect(tables[1]?.rows).toContainEqual(["Heydar Aliyev Centre – Vintage Museum ticket", ""]);
+    expect(tables[1]?.rows).toContainEqual(["Little Venice ticket", ""]);
+    expect(markdown).not.toContain("Marriott Boulevard hotel");
+    expect(markdown).not.toContain("Qafqaz Tufandag Resort");
+  });
+
   test("OCR fragments preserve polygon geometry before table reconstruction", () => {
     const fragment = normalizeOcrFragment({
       text: "Private transfers",
@@ -272,10 +322,10 @@ describe("document OCR pipeline", () => {
       { text: "Personal expenses", confidence: 0.97, poly: [{ x: 600, y: 350 }, { x: 820, y: 350 }, { x: 820, y: 380 }, { x: 600, y: 380 }] },
     ].map((fragment) => normalizeOcrFragment(fragment, 2));
     const pageThree = [
+      { text: "Heydar Aliyev Centre – Vintage Museum ticket", confidence: 0.97, poly: [{ x: 70, y: 40 }, { x: 500, y: 40 }, { x: 500, y: 70 }, { x: 70, y: 70 }] },
       { text: "Hotels", confidence: 0.98, poly: [{ x: 70, y: 80 }, { x: 200, y: 80 }, { x: 200, y: 110 }, { x: 70, y: 110 }] },
       { text: "Per adult price in SNGL room", confidence: 0.98, poly: [{ x: 70, y: 120 }, { x: 360, y: 120 }, { x: 360, y: 150 }, { x: 70, y: 150 }] },
       { text: "840 USD", confidence: 0.98, poly: [{ x: 70, y: 160 }, { x: 180, y: 160 }, { x: 180, y: 190 }, { x: 70, y: 190 }] },
-      { text: "Heydar Aliyev Centre – Vintage Museum ticket", confidence: 0.97, poly: [{ x: 70, y: 240 }, { x: 500, y: 240 }, { x: 500, y: 270 }, { x: 70, y: 270 }] },
     ].map((fragment) => normalizeOcrFragment(fragment, 3));
 
     const fragments = [...pageOne, ...pageTwo, ...pageThree].filter((fragment): fragment is NonNullable<typeof fragment> => Boolean(fragment));

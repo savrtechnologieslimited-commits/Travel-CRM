@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildItineraryCopyTitle, buildItineraryLibrarySaveFields, buildItineraryTermsSnapshot, itineraryBuilderUrl, itineraryDayTitleWithoutPrefix, itineraryDraftLatestKey, itineraryDraftStorageScope, itineraryTermsSnapshotsEqual } from "./itinerary-builder-state";
+import { buildItineraryCopyTitle, buildItineraryLibrarySaveFields, buildItineraryTermsSnapshot, hasPendingItineraryGeneration, itineraryBuilderUrl, itineraryDayTitleWithoutPrefix, itineraryDraftLatestKey, itineraryDraftStorageScope, itineraryTermsSnapshotsEqual } from "./itinerary-builder-state";
 
 describe("itinerary builder URL state", () => {
   test("stores the itinerary ID while preserving other query parameters", () => {
@@ -35,6 +35,12 @@ describe("itinerary builder URL state", () => {
   test("keeps a stable latest-draft key for recovery across revisits", () => {
     expect(itineraryDraftLatestKey("user-1")).toBe("savr-itinerary-last-draft:user-1");
     expect(itineraryDraftLatestKey(null)).toBe("savr-itinerary-last-draft:anonymous");
+  });
+
+  test("only skips draft recovery while a generated draft payload is still pending", () => {
+    const params = new URLSearchParams("supplierDraft=1");
+    expect(hasPendingItineraryGeneration(params, new Set(["itinerary-supplier-draft"]))).toBe(true);
+    expect(hasPendingItineraryGeneration(params, new Set())).toBe(false);
   });
 
   test("removes an existing day-number prefix from generated day titles", () => {

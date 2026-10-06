@@ -10,6 +10,7 @@ import {
   type ItineraryDraft,
   type ItineraryGenerationProvider,
 } from "./ai-itinerary-generation.server";
+import { extractSupplierHotelNames, sameSupplierHotelName } from "./hotel-price-import";
 import { extractSupplierDocumentTables, type SupplierDocumentTable } from "./supplier-document-tables";
 
 export type SupplierDocumentInput = {
@@ -154,12 +155,39 @@ export async function extractItineraryFromSupplierDocument(
   const generated = await provider.generateItinerary({ destination: destinationText, supplier_content: text, special_requirements: "Carefully interpret the complete supplier document, including OCR/table/two-column layout. Reconstruct a polished customer-ready itinerary with one concise descriptive title and useful narrative per source day. Classify inclusions and exclusions independently from their meaning, not extraction order. Preserve every supported trip fact and day order; do not copy paragraphs, duplicate day labels, or invent missing details." });
   const datesAreExplicit = hasExactCalendarDate(text);
   const dateOrNull = (value: unknown) => datesAreExplicit && validCalendarDate(value) ? value : null;
-  const draft = validateItineraryDraft(sanitizeSupplierItineraryItemFields({
+  const validatedDraft = validateItineraryDraft(sanitizeSupplierItineraryItemFields({
     ...generated.draft,
     travel_start_date: dateOrNull(generated.draft.travel_start_date),
     travel_end_date: dateOrNull(generated.draft.travel_end_date),
     days: generated.draft.days.map((day) => ({ ...day, date: dateOrNull(day.date) })),
   }));
+  const missingHotelNames = extractSupplierHotelNames(text).filter((hotelName) =>
+    !validatedDraft.days.some((day) => day.items.some((item) => {
+      const existingHotelName = item["hotel_name"];
+      return item.item_type === "ACCOMMODATION"
+        && typeof existingHotelName === "string"
+        && sameSupplierHotelName(existingHotelName, hotelName);
+    })),
+  );
+  const draft = missingHotelNames.length
+    ? {
+        ...validatedDraft,
+        days: validatedDraft.days.map((day, dayIndex) => dayIndex === 0
+          ? {
+              ...day,
+              items: [
+                ...day.items,
+                ...missingHotelNames.map((hotelName, index) => ({
+                  item_type: "ACCOMMODATION" as const,
+                  sequence: day.items.length + index + 1,
+                  title: hotelName,
+                  hotel_name: hotelName,
+                })),
+              ],
+            }
+          : day),
+      }
+    : validatedDraft;
   const photo_attachments = await findItineraryLibraryPhotoAttachments(draft, text);
   const tables = extractSupplierDocumentTables(text).filter((table) => !isTermsOnlyTable(table));
   return { draft, photo_attachments, extracted_text: text, extracted_text_length: text.length, tables, destination_resolution: resolution, provenance: "AI_SUPPLIER_IMPORT" };

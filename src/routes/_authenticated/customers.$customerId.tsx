@@ -1,8 +1,22 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Edit3, ExternalLink, MessageSquareText, Phone, Upload } from "lucide-react";
+import { useServerFn } from "@tanstack/react-start";
+import {
+  ArrowLeft,
+  Copy,
+  Edit3,
+  ExternalLink,
+  Eye,
+  MessageSquareText,
+  Pencil,
+  Phone,
+  Share2,
+  Trash2,
+  Upload,
+} from "lucide-react";
+import { toast } from "sonner";
 import { useCustomer } from "@/lib/data";
 import { formatDate, formatMoney, titleize } from "@/lib/crm";
 import {
@@ -16,20 +30,199 @@ import { CustomerDeleteButton } from "@/components/customer-delete-button";
 import { WacrmContactMatchLink } from "@/components/wacrm-contact-match-link";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Database, Json } from "@/integrations/supabase/types";
+import { buildPublicItineraryShareUrl, createItineraryShareFn } from "@/lib/itinerary-share";
 
 type CustomerFlowRequirement = Database["public"]["Tables"]["customer_flow_requirements"]["Row"];
 type CustomerItinerary = Pick<
   Database["public"]["Tables"]["itineraries"]["Row"],
-  "id" | "title" | "name" | "travel_start_date" | "travel_end_date" | "adults" | "children"
+  | "id"
+  | "title"
+  | "name"
+  | "status"
+  | "travel_start_date"
+  | "travel_end_date"
+  | "adults"
+  | "children"
 > & {
-  destinations: { name: string } | null;
+  destinations: { name: string | null } | null;
 };
 type ItinerarySummaryItem = Database["public"]["Tables"]["itinerary_day_items"]["Row"];
 const makeMyTripFlightProvider = flightSearchProviders.find(
   (provider) => provider.name === "MakeMyTrip",
 );
+
+function AssignedItineraryCard({
+  itinerary,
+  index,
+  customerId,
+  onDeleted,
+}: {
+  itinerary: CustomerItinerary;
+  index: number;
+  customerId: string;
+  onDeleted: () => Promise<void>;
+}) {
+  const createShare = useServerFn(createItineraryShareFn);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
+  const [sharing, setSharing] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const title = itinerary.title ?? itinerary.name ?? "Untitled itinerary";
+
+  async function shareItinerary() {
+    setSharing(true);
+    try {
+      const result = await createShare({ data: { itineraryId: itinerary.id, expiresInDays: 30 } });
+      setShareUrl(buildPublicItineraryShareUrl(window.location.origin, result.token));
+      setShareDialogOpen(true);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Unable to create the itinerary share link.",
+      );
+    } finally {
+      setSharing(false);
+    }
+  }
+
+  async function copyShareUrl() {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      toast.success("Itinerary share link copied");
+    } catch {
+      toast.error("Could not copy automatically. Select the share link and copy it.");
+    }
+  }
+
+  async function deleteItinerary() {
+    if (!window.confirm(`Delete "${title}" from this customer? This cannot be undone.`)) return;
+
+    setDeleting(true);
+    try {
+      const { data: current, error: readError } = await supabase
+        .from("itineraries")
+        .select("document_path")
+        .eq("id", itinerary.id)
+        .eq("customer_id", customerId)
+        .maybeSingle();
+      if (readError) throw readError;
+      if (!current) throw new Error("This assigned itinerary could not be found.");
+
+      if (current.document_path) {
+        const { error: storageError } = await supabase.storage
+          .from("itineraries")
+          .remove([current.document_path]);
+        if (storageError) throw storageError;
+      }
+
+      const { error: deleteError } = await supabase
+        .from("itineraries")
+        .delete()
+        .eq("id", itinerary.id)
+        .eq("customer_id", customerId);
+      if (deleteError) throw deleteError;
+      await onDeleted();
+      toast.success("Assigned itinerary deleted");
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Unable to delete the assigned itinerary.",
+      );
+    } finally {
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <>
+      <article className="rounded-lg border border-slate-200 p-4 transition-colors hover:bg-slate-50">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Assigned itinerary {index + 1}
+            </p>
+            <p className="mt-1 text-base font-medium text-slate-900">{title}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {itinerary.destinations?.name ?? "Destination pending"} ·{" "}
+              {itinerary.travel_start_date || itinerary.travel_end_date
+                ? `${itinerary.travel_start_date ? formatDate(itinerary.travel_start_date) : "Dates not set"}${itinerary.travel_end_date ? ` – ${formatDate(itinerary.travel_end_date)}` : ""}`
+                : "Dates not set"}
+            </p>
+          </div>
+          <StatusBadge status={itinerary.status} />
+        </div>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <Button type="button" size="sm" variant="outline" asChild>
+            <Link to="/itinerary-builder" search={{ itineraryId: itinerary.id, preview: "1" }}>
+              <Eye className="mr-1.5 size-4" />
+              Preview
+            </Link>
+          </Button>
+          <Button type="button" size="sm" variant="outline" asChild>
+            <Link to="/itinerary-builder" search={{ itineraryId: itinerary.id }}>
+              <Pencil className="mr-1.5 size-4" />
+              Edit
+            </Link>
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void shareItinerary()}
+            disabled={sharing}
+          >
+            <Share2 className="mr-1.5 size-4" />
+            {sharing ? "Creating link…" : "Share"}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="text-rose-700 hover:bg-rose-50 hover:text-rose-800"
+            onClick={() => void deleteItinerary()}
+            disabled={deleting}
+          >
+            <Trash2 className="mr-1.5 size-4" />
+            {deleting ? "Deleting…" : "Delete"}
+          </Button>
+        </div>
+      </article>
+      <Dialog open={shareDialogOpen} onOpenChange={setShareDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Share itinerary</DialogTitle>
+            <DialogDescription>
+              This customer-ready link is available for 30 days.
+            </DialogDescription>
+          </DialogHeader>
+          <input
+            aria-label="Itinerary share link"
+            readOnly
+            value={shareUrl}
+            className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 text-sm"
+          />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setShareDialogOpen(false)}>
+              Close
+            </Button>
+            <Button type="button" onClick={() => void copyShareUrl()}>
+              <Copy className="mr-1.5 size-4" />
+              Copy link
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
 
 function requirementAnswerEntries(answers: Json): [string, string][] {
   if (!answers || typeof answers !== "object" || Array.isArray(answers)) return [];
@@ -430,11 +623,8 @@ function CustomerDetailPage() {
   const { data, isLoading, isError, error } = useCustomer(customerId);
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("overview");
-  const [selectedItineraryIds, setSelectedItineraryIds] = useState<string[]>([]);
-  const [savingItinerarySelection, setSavingItinerarySelection] = useState(false);
-  const [itinerarySelectionError, setItinerarySelectionError] = useState<string | null>(null);
-  const selectedItineraries =
-    data?.itineraries.filter((entry) => selectedItineraryIds.includes(entry.id)) ?? [];
+  const selectedItineraries = data?.itineraries ?? [];
+  const selectedItineraryIds = selectedItineraries.map((itinerary) => itinerary.id);
   const selectedSummaries = useQuery({
     queryKey: ["customer-selected-itinerary-summaries", selectedItineraryIds],
     enabled: selectedItineraryIds.length > 0,
@@ -456,13 +646,6 @@ function CustomerDetailPage() {
       return { days: days ?? [], items: items ?? [] };
     },
   });
-  useEffect(() => {
-    setSelectedItineraryIds(
-      (data?.itineraries ?? [])
-        .filter((itinerary) => itinerary.show_in_customer_bookings)
-        .map((itinerary) => itinerary.id),
-    );
-  }, [data?.itineraries]);
 
   if (isLoading) return <p className="text-sm text-slate-500">Loading customer…</p>;
   if (isError) {
@@ -475,37 +658,7 @@ function CustomerDetailPage() {
   const customer = data?.customer;
   if (!customer) return <p className="text-sm text-slate-500">Customer not found.</p>;
 
-  const itinerarySelectionAvailable = data.itinerarySelectionAvailable;
   const primaryPhone = customer.whatsapp ?? customer.mobile ?? "—";
-  async function saveItinerarySelection() {
-    if (!itinerarySelectionAvailable) {
-      setItinerarySelectionError(
-        "Itinerary selection is unavailable until the CRM database is updated.",
-      );
-      return;
-    }
-    setSavingItinerarySelection(true);
-    setItinerarySelectionError(null);
-    try {
-      const updates = await Promise.all(
-        (data?.itineraries ?? []).map((itinerary) =>
-          supabase
-            .from("itineraries")
-            .update({ show_in_customer_bookings: selectedItineraryIds.includes(itinerary.id) })
-            .eq("id", itinerary.id),
-        ),
-      );
-      const failedUpdate = updates.find((result) => result.error);
-      if (failedUpdate?.error) throw failedUpdate.error;
-      await queryClient.invalidateQueries({ queryKey: ["customer", customerId] });
-    } catch (saveError) {
-      setItinerarySelectionError(
-        saveError instanceof Error ? saveError.message : "Could not save itinerary selection.",
-      );
-    } finally {
-      setSavingItinerarySelection(false);
-    }
-  }
 
   return (
     <div className="space-y-4">
@@ -756,24 +909,19 @@ function CustomerDetailPage() {
       {tab === "bookings" && (
         <div className="space-y-4">
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">Selected itinerary bookings</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Itinerary bookings</h2>
             <p className="mt-1 text-xs text-slate-500">
-              Itineraries selected and saved in the Itineraries tab.
+              Bookings from all itineraries assigned to this customer.
             </p>
-            {!itinerarySelectionAvailable ? (
+            {selectedItineraries.length === 0 ? (
               <p className="mt-4 text-sm text-slate-500">
-                Itinerary selection is unavailable until the CRM database is updated.
-              </p>
-            ) : selectedItineraries.length === 0 ? (
-              <p className="mt-4 text-sm text-slate-500">
-                No itineraries selected. Choose itineraries in the Itineraries tab and save your
-                selection.
+                No itineraries have been assigned to this customer yet.
               </p>
             ) : selectedSummaries.isLoading ? (
-              <p className="mt-4 text-sm text-slate-500">Loading selected itinerary bookings…</p>
+              <p className="mt-4 text-sm text-slate-500">Loading itinerary bookings…</p>
             ) : selectedSummaries.isError ? (
               <p className="mt-4 text-sm text-rose-700" role="alert">
-                Could not load selected itinerary bookings:{" "}
+                Could not load itinerary bookings:{" "}
                 {selectedSummaries.error instanceof Error
                   ? selectedSummaries.error.message
                   : "Unknown error"}
@@ -833,78 +981,26 @@ function CustomerDetailPage() {
                 Itinerary copies assigned to {customer.full_name}.
               </p>
             </div>
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={() => void saveItinerarySelection()}
-                disabled={savingItinerarySelection || !itinerarySelectionAvailable}
-              >
-                {savingItinerarySelection ? "Saving…" : "Save selection"}
-              </Button>
-              <Button size="sm" variant="outline" asChild>
-                <Link to="/itinerary-builder" search={{ customerId: customer.id }}>
-                  Create itinerary
-                </Link>
-              </Button>
-            </div>
+            <Button size="sm" variant="outline" asChild>
+              <Link to="/itinerary-builder" search={{ customerId: customer.id }}>
+                Create itinerary
+              </Link>
+            </Button>
           </div>
-          <p className="mb-3 text-xs text-slate-500">
-            Select one or more itineraries to show their hotel, flight, and activity bookings in the
-            Bookings tab.
-          </p>
-          {!itinerarySelectionAvailable && (
-            <p className="mb-3 text-sm text-amber-700" role="status">
-              Itinerary selection is unavailable until the CRM database is updated.
-            </p>
-          )}
-          {itinerarySelectionError && (
-            <p className="mb-3 text-sm text-rose-700" role="alert">
-              Could not save itinerary selection: {itinerarySelectionError}
-            </p>
-          )}
           {(data?.itineraries ?? []).length === 0 ? (
             <p className="text-sm text-slate-500">No itineraries assigned to this customer yet.</p>
           ) : (
             <div className="space-y-3">
-              {(data?.itineraries ?? []).map((itinerary) => (
-                <div
+              {(data?.itineraries ?? []).map((itinerary, index) => (
+                <AssignedItineraryCard
                   key={itinerary.id}
-                  className="flex items-start gap-3 rounded-lg border border-slate-200 p-3 transition-colors hover:bg-slate-50"
-                >
-                  <input
-                    type="checkbox"
-                    aria-label={`Show ${itinerary.title ?? itinerary.name ?? "itinerary"} in Bookings`}
-                    checked={selectedItineraryIds.includes(itinerary.id)}
-                    disabled={!itinerarySelectionAvailable}
-                    onChange={(event) => {
-                      setSelectedItineraryIds((current) =>
-                        event.target.checked
-                          ? [...new Set([...current, itinerary.id])]
-                          : current.filter((id) => id !== itinerary.id),
-                      );
-                      setItinerarySelectionError(null);
-                    }}
-                    className="mt-1 size-4 shrink-0 accent-slate-900"
-                  />
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <Link
-                      to="/itinerary-builder"
-                      search={{ itineraryId: itinerary.id }}
-                      className="min-w-0 flex-1"
-                    >
-                      <p className="text-sm font-medium text-slate-900">
-                        {itinerary.title ?? itinerary.name ?? "Untitled itinerary"}
-                      </p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {itinerary.destinations?.name ?? "Destination pending"} ·{" "}
-                        {itinerary.travel_start_date || itinerary.travel_end_date
-                          ? `${itinerary.travel_start_date ? formatDate(itinerary.travel_start_date) : "Dates not set"}${itinerary.travel_end_date ? ` – ${formatDate(itinerary.travel_end_date)}` : ""}`
-                          : "Dates not set"}
-                      </p>
-                    </Link>
-                    <StatusBadge status={itinerary.status} />
-                  </div>
-                </div>
+                  itinerary={itinerary}
+                  index={index}
+                  customerId={customer.id}
+                  onDeleted={() =>
+                    queryClient.invalidateQueries({ queryKey: ["customer", customerId] })
+                  }
+                />
               ))}
             </div>
           )}

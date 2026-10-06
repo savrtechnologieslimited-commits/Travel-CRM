@@ -4366,11 +4366,14 @@ function ItineraryBuilderPage() {
   const [currentItineraryId, setCurrentItineraryId] = useState<string | null>(null);
   const savedTermsSnapshotRef = useRef<ReturnType<typeof buildItineraryTermsSnapshot> | null>(null);
   const recoveredDraftRef = useRef(false);
+  const assignedItineraryPreviewOpenedRef = useRef(false);
   const termsSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [currentDraftId, setCurrentDraftId] = useState<string | null>(null);
   const [draftOwnerId, setDraftOwnerId] = useState<string | null>(null);
   const [draftReady, setDraftReady] = useState(false);
   const [librarySaveInProgress, setLibrarySaveInProgress] = useState(false);
+  const [libraryNameDialogOpen, setLibraryNameDialogOpen] = useState(false);
+  const [libraryItineraryName, setLibraryItineraryName] = useState("");
   const draftAutosavePromiseRef = useRef<Promise<void>>(Promise.resolve());
   const [draftSaveState, setDraftSaveState] = useState<"idle" | "saving" | "saved" | "local">(
     "idle",
@@ -4402,6 +4405,8 @@ function ItineraryBuilderPage() {
   const [clientAssignmentSearch, setClientAssignmentSearch] = useState("");
   const [selectedLeadId, setSelectedLeadId] = useState("");
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
+  const [assignmentItineraryName, setAssignmentItineraryName] = useState("");
+  const assignmentAutoSaveStartedRef = useRef(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [copyMode, setCopyMode] = useState(false);
   const [copyPreviewReviewed, setCopyPreviewReviewed] = useState(false);
@@ -5184,6 +5189,7 @@ function ItineraryBuilderPage() {
     setClientAssignmentKind(currentLead ? "lead" : "customer");
     setSelectedLeadId(currentLead?.id ?? "");
     setSelectedCustomerId(currentLead ? "" : form.customer_id);
+    setAssignmentItineraryName(form.title.trim() || `${destinationName || "Trip"} itinerary`);
     setClientAssignmentSearch("");
     setClientAssignmentOpen(true);
   }
@@ -5192,30 +5198,13 @@ function ItineraryBuilderPage() {
     const selectedLead = clientAssignmentKind === "lead" ? selectedAssignmentLead : null;
     const selectedCustomer =
       clientAssignmentKind === "customer" ? selectedAssignmentCustomer : null;
-    if (copyMode) {
-      if (!selectedCustomer) {
-        toast.error("Select a customer for this itinerary copy.");
-        return;
-      }
-      const relationship: Partial<TripForm> = {
-        lead_id: "",
-        customer_id: selectedCustomer.id,
-        enquiry_id: "",
-      };
-      setForm((current) => ({
-        ...current,
-        ...relationship,
-        title: `${current.title.split(" — ")[0] || current.title} — ${selectedCustomer.full_name}`,
-      }));
-      setCopyPreviewReviewed(false);
-      setClientAssignmentOpen(false);
-      setMessage(
-        `Review the itinerary for ${selectedCustomer.full_name}, then preview and save their copy.`,
-      );
-      return;
-    }
     if (!selectedLead && !selectedCustomer) {
       toast.error("Select a lead or customer first.");
+      return;
+    }
+    const assignmentName = assignmentItineraryName.trim();
+    if (!assignmentName) {
+      toast.error("Enter a name for this assigned itinerary.");
       return;
     }
 
@@ -5225,16 +5214,19 @@ function ItineraryBuilderPage() {
     if (
       currentItineraryId &&
       relationship.customer_id &&
-      relationship.customer_id !== form.customer_id
+      selectedCustomer
     ) {
-      window.location.assign(
-        `/itinerary-builder?copyFrom=${encodeURIComponent(currentItineraryId)}&customerId=${encodeURIComponent(relationship.customer_id)}`,
-      );
+      const params = new URLSearchParams({
+        copyFrom: currentItineraryId,
+        customerId: relationship.customer_id,
+        copyName: assignmentName,
+        assignNow: "1",
+      });
+      window.location.assign(`/itinerary-builder?${params.toString()}`);
       return;
     }
     setSaving(true);
     try {
-      const saveTitle = form.title.trim() || "Activity itinerary";
       const destinationId =
         form.destination_id ||
         destinations.find((destination) => destination.name === destinationName)?.id ||
@@ -5242,9 +5234,9 @@ function ItineraryBuilderPage() {
       const { data: sessionData, error: sessionError } = await supabase.auth.getUser();
       if (sessionError) throw sessionError;
       const assignmentPayload = {
-        title: saveTitle,
+        title: assignmentName,
         ...buildItineraryLibrarySaveFields({
-          title: saveTitle,
+          title: assignmentName,
           dayCount: days.length,
           status: form.status,
         }),
@@ -5259,7 +5251,7 @@ function ItineraryBuilderPage() {
       };
 
       let assignedItineraryId = currentItineraryId;
-      if (assignedItineraryId) {
+      if (assignedItineraryId && !copyMode) {
         const { data, error } = await supabase
           .from("itineraries")
           .update(assignmentPayload)
@@ -5285,12 +5277,12 @@ function ItineraryBuilderPage() {
         );
       }
 
-      setForm((current) => ({ ...current, ...relationship }));
+      setForm((current) => ({ ...current, ...relationship, title: assignmentName }));
       setClientAssignmentOpen(false);
       setMessage(
         selectedLead
-          ? `Itinerary assigned to ${selectedLead.customer_name} through lead ${selectedLead.code}. Save the itinerary content when it is ready.`
-          : `Itinerary assigned to ${selectedCustomer!.full_name}. Save the itinerary content when it is ready.`,
+          ? `Itinerary assigned to ${selectedLead.customer_name} through lead ${selectedLead.code}. Save the assigned itinerary to persist its content.`
+          : `Itinerary assigned to ${selectedCustomer!.full_name}. Save the assigned itinerary to persist its content.`,
       );
       toast.success("Itinerary assigned to client");
     } catch (error) {
@@ -6318,21 +6310,21 @@ function ItineraryBuilderPage() {
         for (let index = 0; index < binary.length; index += 1)
           bytes[index] = binary.charCodeAt(index);
         const candidate = await extractDocumentCandidate({
-          fileName: input.fileName,
-          mimeType: input.mimeType ?? "application/octet-stream",
-          file: bytes as unknown as Buffer,
+            fileName: input.fileName,
+            mimeType: input.mimeType ?? "application/octet-stream",
+            file: bytes as unknown as Buffer,
         }, (progress) => {
-          const pageLabel =
-            progress.page && progress.totalPages
-              ? `Page ${progress.page} of ${progress.totalPages}`
-              : "PDF";
-          if (progress.stage === "loading_ocr") {
+            const pageLabel =
+              progress.page && progress.totalPages
+                ? `Page ${progress.page} of ${progress.totalPages}`
+                : "PDF";
+            if (progress.stage === "loading_ocr") {
             setMessage("Loading on-device OCR engine. The first scanned document can take longer.");
-          } else if (progress.stage === "recognizing") {
-            setMessage(`Extracting text from ${pageLabel}…`);
-          } else {
-            setMessage(`Reading ${pageLabel}…`);
-          }
+            } else if (progress.stage === "recognizing") {
+              setMessage(`Extracting text from ${pageLabel}…`);
+            } else {
+              setMessage(`Reading ${pageLabel}…`);
+            }
         });
         extractedText = candidate.text.trim();
         if (!extractedText && browserRuntime) {
@@ -6498,11 +6490,11 @@ function ItineraryBuilderPage() {
   );
 
   async function extractSupplierDraft(input: {
-    sourceText?: string;
-    destinationText?: string;
-    fileName?: string;
-    mimeType?: string;
-    fileBase64?: string;
+      sourceText?: string;
+      destinationText?: string;
+      fileName?: string;
+      mimeType?: string;
+      fileBase64?: string;
   }, options?: { quickPreview?: boolean }) {
     const extractedText = await extractSupplierTextFromFile(input);
     if (extractedText)
@@ -6617,7 +6609,8 @@ function ItineraryBuilderPage() {
     setForm((current) => ({
       ...current,
       title: customerCopy
-        ? `${typeof itinerary.title === "string" ? itinerary.title : current.title}${copyCustomer ? ` — ${copyCustomer.full_name}` : ""}`
+        ? new URLSearchParams(window.location.search).get("copyName")?.trim() ||
+          `${typeof itinerary.title === "string" ? itinerary.title : current.title}${copyCustomer ? ` — ${copyCustomer.full_name}` : ""}`
         : options?.createLibraryCopy
           ? buildItineraryCopyTitle(
               typeof itinerary.name === "string" && itinerary.name.trim()
@@ -7443,6 +7436,26 @@ function ItineraryBuilderPage() {
         setForm((current) => ({ ...current, destination_id: destinationId }));
       }
 
+      let linkedItineraryDraftId: string | null = null;
+      if (!generatedDraftMode && !copySourceId && itineraryIdFromQuery) {
+        const { data: linkedDraft, error: linkedDraftError } = await supabase
+          .from("itinerary_drafts")
+          .select("id")
+          .eq("user_id", userId)
+          .eq("itinerary_id", itineraryIdFromQuery)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (linkedDraftError) {
+          console.warn(
+            "[Itinerary builder] Could not locate the draft linked to this itinerary.",
+            linkedDraftError,
+          );
+        } else {
+          linkedItineraryDraftId = linkedDraft?.id ?? null;
+        }
+      }
+
       const copyDraftId = copySourceId ? crypto.randomUUID() : null;
       const scope = itineraryDraftStorageScope({
         itineraryId: copySourceId ? null : itineraryIdFromQuery,
@@ -7452,7 +7465,7 @@ function ItineraryBuilderPage() {
       const storageBaseKey = `savr-itinerary-draft:${userId}:${scope}`;
       const latestDraftKey = itineraryDraftLatestKey(userId);
       draftStorageKeyRef.current = storageBaseKey;
-      let savedDraftId = copyDraftId ?? params.get("draftId");
+      let savedDraftId = copyDraftId ?? linkedItineraryDraftId ?? params.get("draftId");
       if (!copySourceId) {
         try {
           savedDraftId ||= window.localStorage.getItem(`${storageBaseKey}:id`);
@@ -7469,7 +7482,7 @@ function ItineraryBuilderPage() {
       } catch {
         // Private browsing or storage restrictions do not prevent database autosave.
       }
-      if (!params.get("draftId") || libraryCopyFromId) {
+      if (params.get("draftId") !== savedDraftId || libraryCopyFromId) {
         const nextSearch = new URLSearchParams(window.location.search);
         nextSearch.set("draftId", savedDraftId);
         nextSearch.delete("libraryCopyFrom");
@@ -7477,7 +7490,7 @@ function ItineraryBuilderPage() {
         window.history.replaceState(null, "", nextUrl);
       }
 
-      if (!generatedDraftMode && !copySourceId && !itineraryIdFromQuery) {
+      if (!generatedDraftMode && !copySourceId) {
         let snapshot: ItineraryDraftSnapshot | null = null;
         let localSavedAt = 0;
         try {
@@ -7504,6 +7517,7 @@ function ItineraryBuilderPage() {
           .from("itinerary_drafts")
           .select("draft_data,updated_at")
           .eq("id", savedDraftId)
+          .eq("user_id", userId)
           .maybeSingle();
         if (cancelled) return;
         if (draftError) {
@@ -7576,6 +7590,18 @@ function ItineraryBuilderPage() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (
+      !draftReady ||
+      !currentItineraryId ||
+      new URLSearchParams(window.location.search).get("preview") !== "1" ||
+      assignedItineraryPreviewOpenedRef.current
+    )
+      return;
+    assignedItineraryPreviewOpenedRef.current = true;
+    setPreviewOpen(true);
+  }, [currentItineraryId, draftReady]);
 
   useEffect(() => {
     if (
@@ -7893,16 +7919,16 @@ function ItineraryBuilderPage() {
                 ...(overallHotel.metadata ?? {}),
                 overall_hotel_booking: true,
                 room_details: [{
-                  id: crypto.randomUUID(),
-                  room_type: "Standard",
-                  adults: Number(form.adults) || 2,
-                  kids: Number(form.children) || 0,
-                  breakfast: false,
-                  lunch: false,
-                  dinner: false,
-                  room_rate_per_night: 0,
-                  currency: "INR",
-                  free_cancellation_date: "",
+                    id: crypto.randomUUID(),
+                    room_type: "Standard",
+                    adults: Number(form.adults) || 2,
+                    kids: Number(form.children) || 0,
+                    breakfast: false,
+                    lunch: false,
+                    dinner: false,
+                    room_rate_per_night: 0,
+                    currency: "INR",
+                    free_cancellation_date: "",
                 }],
               },
             },
@@ -8516,7 +8542,11 @@ function ItineraryBuilderPage() {
       toast.error("Choose a customer before saving this itinerary copy.");
       return false;
     }
-    if (copyMode && !copyPreviewReviewed) {
+    if (
+      copyMode &&
+      !copyPreviewReviewed &&
+      new URLSearchParams(window.location.search).get("assignNow") !== "1"
+    ) {
       toast.error("Preview the itinerary for this customer before saving their copy.");
       return false;
     }
@@ -9187,8 +9217,44 @@ function ItineraryBuilderPage() {
     }
   }
 
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (
+      !draftReady ||
+      !copyMode ||
+      params.get("assignNow") !== "1" ||
+      assignmentAutoSaveStartedRef.current
+    )
+      return;
+
+    assignmentAutoSaveStartedRef.current = true;
+    void saveItinerary(false).then((saved) => {
+      if (!saved) return;
+      const currentParams = new URLSearchParams(window.location.search);
+      currentParams.delete("assignNow");
+      currentParams.delete("copyName");
+      const query = currentParams.toString();
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`,
+      );
+      toast.success("New assigned itinerary saved");
+    });
+  }, [copyMode, currentItineraryId, draftReady]);
+
+  function openLibraryNameDialog() {
+    setLibraryItineraryName(form.title.trim() || `${destinationName || "Trip"} itinerary`);
+    setLibraryNameDialogOpen(true);
+  }
+
   async function saveItineraryToLibrary() {
     if (librarySaveInProgress || saving) return;
+    const itineraryName = libraryItineraryName.trim();
+    if (!itineraryName) {
+      toast.error("Enter a name for this itinerary.");
+      return;
+    }
     setLibrarySaveInProgress(true);
     try {
       const saved = await saveItinerary(
@@ -9199,9 +9265,11 @@ function ItineraryBuilderPage() {
         undefined,
         undefined,
         undefined,
-        { status: "READY" },
+        { status: "READY", title: itineraryName },
       );
       if (!saved) return;
+      setForm((current) => ({ ...current, title: itineraryName }));
+      setLibraryNameDialogOpen(false);
 
       const savedItineraryId = new URL(window.location.href).searchParams.get("itineraryId");
       let draftCleanupFailed = false;
@@ -9785,7 +9853,7 @@ function ItineraryBuilderPage() {
             variant="outline"
             size="sm"
             disabled={saving || librarySaveInProgress}
-            onClick={() => void saveItineraryToLibrary()}
+            onClick={openLibraryNameDialog}
           >
             <FolderOpen className="mr-1.5 size-4" />
             {librarySaveInProgress ? "Saving to Library…" : "Save to Itinerary Library"}
@@ -9798,8 +9866,19 @@ function ItineraryBuilderPage() {
             onClick={openClientAssignment}
           >
             <UserPlus className="mr-1.5 size-4" />
-            {form.lead_id || form.customer_id ? "Change Client" : "Assign to Client"}
+            Assign to Client
           </Button>
+          {currentItineraryId && form.customer_id && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={saving || librarySaveInProgress}
+              onClick={() => void saveItinerary(false)}
+            >
+              {saving ? "Saving…" : "Save to Assigned Itinerary"}
+            </Button>
+          )}
           <Button
             type="button"
             variant="default"
@@ -9815,6 +9894,50 @@ function ItineraryBuilderPage() {
           </Button>
         </div>
       </header>
+
+      <Dialog open={libraryNameDialogOpen} onOpenChange={setLibraryNameDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save itinerary</DialogTitle>
+            <DialogDescription>
+              Confirm or edit the name that will be used in your itinerary library.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label htmlFor="library-itinerary-name">Itinerary name</Label>
+            <Input
+              id="library-itinerary-name"
+              autoFocus
+              value={libraryItineraryName}
+              onChange={(event) => setLibraryItineraryName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !saving && !librarySaveInProgress) {
+                  event.preventDefault();
+                  void saveItineraryToLibrary();
+                }
+              }}
+              placeholder="Enter itinerary name"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setLibraryNameDialogOpen(false)}
+              disabled={librarySaveInProgress}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => void saveItineraryToLibrary()}
+              disabled={saving || librarySaveInProgress || !libraryItineraryName.trim()}
+            >
+              {librarySaveInProgress ? "Saving…" : "Save itinerary"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={customerDetailsOpen} onOpenChange={setCustomerDetailsOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
@@ -10162,6 +10285,15 @@ function ItineraryBuilderPage() {
               )}
             </section>
           </div>
+          <div className="space-y-2 border-t border-slate-200 pt-4">
+            <Label htmlFor="assigned-itinerary-name">Itinerary name</Label>
+            <Input
+              id="assigned-itinerary-name"
+              value={assignmentItineraryName}
+              onChange={(event) => setAssignmentItineraryName(event.target.value)}
+              placeholder="Enter itinerary name"
+            />
+          </div>
           <DialogFooter className="border-t border-slate-200 pt-4">
             <Button
               type="button"
@@ -10187,6 +10319,7 @@ function ItineraryBuilderPage() {
               onClick={() => void assignItineraryToClient()}
               disabled={
                 saving ||
+                !assignmentItineraryName.trim() ||
                 (clientAssignmentKind === "lead"
                   ? !selectedAssignmentLead
                   : !selectedAssignmentCustomer)
@@ -12754,17 +12887,17 @@ function ItineraryBuilderPage() {
             {(() => {
               const overallHotels = days
                 .flatMap((day, dayIndex) =>
-                  day.items
-                    .map((item, itemIndex) => ({ day, dayIndex, item, itemIndex }))
-                    .filter(({ item }) => {
-                      return (
-                        item.item_type === "ACCOMMODATION" &&
-                        getItineraryOption(item) === selectedHotelOption &&
-                        (item.metadata?.["overall_hotel_booking"] === true ||
-                          (!item.check_in && !item.check_out))
-                      );
-                    }),
-                );
+                day.items
+                  .map((item, itemIndex) => ({ day, dayIndex, item, itemIndex }))
+                  .filter(({ item }) => {
+                    return (
+                      item.item_type === "ACCOMMODATION" &&
+                      getItineraryOption(item) === selectedHotelOption &&
+                      (item.metadata?.["overall_hotel_booking"] === true ||
+                        (!item.check_in && !item.check_out))
+                    );
+                  }),
+              );
               return hotelBookingMode === "overall" ? (
                 <section className="space-y-3 border-b border-slate-200 pb-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
@@ -12864,53 +12997,53 @@ function ItineraryBuilderPage() {
                           </div>
                           {item.metadata?.["hotel_saved"] !== true && (
                             <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                            <div className="flex items-start gap-4 p-4">
-                              <div className="h-24 w-28 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-                                {customHotelImage ? (
-                                  <img
-                                    src={customHotelImage}
-                                    alt={item.hotel_name ?? "Hotel image"}
-                                    className="h-full w-full object-cover"
-                                  />
-                                ) : hotelPlaceId ? (
-                                  <HotelPhotoPreview
-                                    placeId={hotelPlaceId}
-                                    savedPhotoUrl=""
-                                    hotelName={item.hotel_name ?? "Hotel"}
-                                    className="h-24 w-28 rounded-lg object-cover"
-                                  />
-                                ) : (
-                                  <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-sky-100 to-slate-200 text-slate-500">
-                                    <ImagePlus className="size-8" />
-                                  </div>
-                                )}
-                              </div>
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-3">
-                                  <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
-                                    Overall stay
-                                  </span>
-                                  {item.hotel_address && (
-                                    <span className="text-sm text-slate-600">
-                                      {item.hotel_address}
-                                    </span>
+                              <div className="flex items-start gap-4 p-4">
+                                <div className="h-24 w-28 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                                  {customHotelImage ? (
+                                    <img
+                                      src={customHotelImage}
+                                      alt={item.hotel_name ?? "Hotel image"}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : hotelPlaceId ? (
+                                    <HotelPhotoPreview
+                                      placeId={hotelPlaceId}
+                                      savedPhotoUrl=""
+                                      hotelName={item.hotel_name ?? "Hotel"}
+                                      className="h-24 w-28 rounded-lg object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-sky-100 to-slate-200 text-slate-500">
+                                      <ImagePlus className="size-8" />
+                                    </div>
                                   )}
                                 </div>
-                                {item.star_category && (
-                                  <p className="mt-2 text-sm text-slate-700">
-                                    {item.star_category}
-                                  </p>
-                                )}
-                                {item.room_type && (
-                                  <p className="mt-1 text-sm text-slate-700">{item.room_type}</p>
-                                )}
-                                {item.meal_plan && (
-                                  <p className="mt-1 text-sm text-slate-700">
-                                    Meal plan: {item.meal_plan}
-                                  </p>
-                                )}
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                                      Overall stay
+                                    </span>
+                                    {item.hotel_address && (
+                                      <span className="text-sm text-slate-600">
+                                        {item.hotel_address}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {item.star_category && (
+                                    <p className="mt-2 text-sm text-slate-700">
+                                      {item.star_category}
+                                    </p>
+                                  )}
+                                  {item.room_type && (
+                                    <p className="mt-1 text-sm text-slate-700">{item.room_type}</p>
+                                  )}
+                                  {item.meal_plan && (
+                                    <p className="mt-1 text-sm text-slate-700">
+                                      Meal plan: {item.meal_plan}
+                                    </p>
+                                  )}
+                                </div>
                               </div>
-                            </div>
                             </div>
                           )}
                           {item.metadata?.["hotel_saved"] === true ? (
@@ -13118,16 +13251,16 @@ function ItineraryBuilderPage() {
                                                   rooms.length > 0
                                                     ? rooms
                                                     : [{
-                                                        id: crypto.randomUUID(),
-                                                        room_type: "Standard",
-                                                        adults: 2,
-                                                        kids: 0,
-                                                        breakfast: false,
-                                                        lunch: false,
-                                                        dinner: false,
-                                                        room_rate_per_night: 0,
-                                                        currency: "INR",
-                                                        free_cancellation_date: "",
+                                                          id: crypto.randomUUID(),
+                                                          room_type: "Standard",
+                                                          adults: 2,
+                                                          kids: 0,
+                                                          breakfast: false,
+                                                          lunch: false,
+                                                          dinner: false,
+                                                          room_rate_per_night: 0,
+                                                          currency: "INR",
+                                                          free_cancellation_date: "",
                                                       }],
                                               },
                                             });
@@ -13142,7 +13275,7 @@ function ItineraryBuilderPage() {
                                           value={room.room_type}
                                           onChange={(event) =>
                                             updateAccommodationRoom(dayIndex, itemIndex, item, roomIndex, {
-                                              room_type: event.target.value,
+                                                room_type: event.target.value,
                                             })
                                           }
                                           placeholder="Room Type"
@@ -13157,7 +13290,7 @@ function ItineraryBuilderPage() {
                                             value={room.adults}
                                             onChange={(event) =>
                                               updateAccommodationRoom(dayIndex, itemIndex, item, roomIndex, {
-                                                adults: Number(event.target.value) || 0,
+                                                  adults: Number(event.target.value) || 0,
                                               })
                                             }
                                           />
@@ -13169,18 +13302,24 @@ function ItineraryBuilderPage() {
                                             min={0}
                                             value={room.kids}
                                             onChange={(event) =>
-                                              updateAccommodationRoom(dayIndex, itemIndex, item, roomIndex, {
-                                                kids: Number(event.target.value) || 0,
-                                              })
+                                              updateAccommodationRoom(
+                                                dayIndex,
+                                                itemIndex,
+                                                item,
+                                                roomIndex,
+                                                {
+                                                  kids: Number(event.target.value) || 0,
+                                                },
+                                              )
                                             }
                                           />
                                         </div>
                                       </div>
                                       <div className="flex flex-wrap gap-4">
                                         {([
-                                          { key: "breakfast", label: "Breakfast" },
-                                          { key: "lunch", label: "Lunch" },
-                                          { key: "dinner", label: "Dinner" },
+                                            { key: "breakfast", label: "Breakfast" },
+                                            { key: "lunch", label: "Lunch" },
+                                            { key: "dinner", label: "Dinner" },
                                         ] as const).map((meal) => (
                                           <label
                                             key={meal.key}
@@ -13191,7 +13330,7 @@ function ItineraryBuilderPage() {
                                               checked={room[meal.key]}
                                               onChange={(event) =>
                                                 updateAccommodationRoom(dayIndex, itemIndex, item, roomIndex, {
-                                                  [meal.key]: event.target.checked,
+                                                    [meal.key]: event.target.checked,
                                                 })
                                               }
                                             />
@@ -13240,7 +13379,7 @@ function ItineraryBuilderPage() {
                                           value={room.free_cancellation_date}
                                           onChange={(event) =>
                                             updateAccommodationRoom(dayIndex, itemIndex, item, roomIndex, {
-                                              free_cancellation_date: event.target.value,
+                                                free_cancellation_date: event.target.value,
                                             })
                                           }
                                         />
@@ -13273,469 +13412,542 @@ function ItineraryBuilderPage() {
             })()}
             {hotelBookingMode === "daywise" && (
               <>
-            {days.map((day, dayIndex) => {
-              const hotels = day.items
-                .map((item, itemIndex) => ({ item, itemIndex }))
-                .filter(({ item }) => {
-                  return (
-                    item.item_type === "ACCOMMODATION" &&
-                    getItineraryOption(item) === selectedHotelOption &&
-                    item.metadata?.["overall_hotel_booking"] !== true &&
-                    (Boolean(item.check_in) || Boolean(item.check_out))
+                {days.map((day, dayIndex) => {
+                  const hotels = day.items
+                    .map((item, itemIndex) => ({ item, itemIndex }))
+                    .filter(({ item }) => {
+                      return (
+                        item.item_type === "ACCOMMODATION" &&
+                        getItineraryOption(item) === selectedHotelOption &&
+                        item.metadata?.["overall_hotel_booking"] !== true &&
+                        (Boolean(item.check_in) || Boolean(item.check_out))
+                      );
+                    });
+                  const checkoutOnlyDay = !hotelCheckInAllowed(
+                    day,
+                    dayIndex,
+                    days,
+                    form.travel_end_date,
                   );
-                });
-              const checkoutOnlyDay = !hotelCheckInAllowed(
-                day,
-                dayIndex,
-                days,
-                form.travel_end_date,
-              );
-              return (
-                <section
-                  key={day.id ?? day.day_number}
-                  className="space-y-3 border-b border-slate-200 pb-5 last:border-b-0"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <h2 className="font-semibold text-slate-900">Day {day.day_number}</h2>
-                      <p className="text-xs text-slate-500">{formatTripDayDate(day.date)}</p>
-                    </div>
-                    {checkoutOnlyDay ? (
-                      <span className="rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                        Checkout only · final trip day
-                      </span>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => addItemToDay(dayIndex, "ACCOMMODATION")}
-                      >
-                        <BedDouble className="mr-1.5 size-4" /> Add Hotel
-                      </Button>
-                    )}
-                  </div>
-                  {checkoutOnlyDay && hotels.length > 0 && (
-                    <p
-                      role="alert"
-                      className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+                  return (
+                    <section
+                      key={day.id ?? day.day_number}
+                      className="space-y-3 border-b border-slate-200 pb-5 last:border-b-0"
                     >
-                      The final trip day is checkout-only. Remove these entries and add the hotel to
-                      an earlier overnight day if needed; no hotel can check in on this date.
-                    </p>
-                  )}
-                  {hotels.length === 0 && (
-                    <p className="rounded-md border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                      No hotel added for this day yet.
-                    </p>
-                  )}
-                  {hotels.map(({ item, itemIndex }) => {
-                    const customHotelImage =
-                      typeof item.metadata?.custom_hotel_photo_url === "string"
-                        ? item.metadata.custom_hotel_photo_url
-                        : "";
-                    const hotelPlaceId =
-                      typeof item.metadata?.google_hotel_place_id === "string"
-                        ? item.metadata.google_hotel_place_id
-                        : "";
-                    const defaultHotelDates = hotelDatesForDay(day.date);
-                    const hotelDates = {
-                      checkIn: item.check_in || defaultHotelDates.checkIn,
-                      checkOut: item.check_out || defaultHotelDates.checkOut,
-                    };
-                    const hotelKey = item.id ?? `${dayIndex}-${itemIndex}`;
-                    return item.metadata?.hotel_saved === true ? (
-                      <SavedHotelSummary
-                        key={hotelKey}
-                        item={item}
-                        dayDate={day.date}
-                        onEdit={() =>
-                          updateItem(dayIndex, itemIndex, {
-                            metadata: { ...(item.metadata ?? {}), hotel_saved: false },
-                          })
-                        }
-                        onDelete={() => deleteItem(dayIndex, itemIndex)}
-                      />
-                    ) : (
-                      <div
-                        key={hotelKey}
-                        className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4"
-                        data-builder-type="ACCOMMODATION"
-                      >
-                        <div className="flex items-center justify-between">
-                          <h3 className="font-medium text-slate-900">Hotel Details</h3>
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <h2 className="font-semibold text-slate-900">Day {day.day_number}</h2>
+                          <p className="text-xs text-slate-500">{formatTripDayDate(day.date)}</p>
+                        </div>
+                        {checkoutOnlyDay ? (
+                          <span className="rounded-md bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
+                            Checkout only · final trip day
+                          </span>
+                        ) : (
                           <Button
                             type="button"
-                            variant="ghost"
-                            size="icon"
-                            aria-label="Remove hotel"
-                            onClick={() => deleteItem(dayIndex, itemIndex)}
-                            className="text-rose-600 hover:text-rose-700"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => addItemToDay(dayIndex, "ACCOMMODATION")}
                           >
-                            <Trash2 className="size-4" />
+                            <BedDouble className="mr-1.5 size-4" /> Add Hotel
                           </Button>
-                        </div>
-
-                        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
-                          <div className="flex items-start gap-4 p-4">
-                            <div className="h-24 w-28 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
-                              {customHotelImage ? (
-                                <img
-                                  src={customHotelImage}
-                                  alt={item.hotel_name ?? "Hotel image"}
-                                  className="h-full w-full object-cover"
-                                />
-                              ) : hotelPlaceId ? (
-                                <HotelPhotoPreview
-                                  placeId={hotelPlaceId}
-                                  savedPhotoUrl=""
-                                  hotelName={item.hotel_name ?? "Hotel"}
-                                  className="h-24 w-28 rounded-lg object-cover"
-                                />
-                              ) : (
-                                <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-sky-100 to-slate-200 text-slate-500">
-                                  <ImagePlus className="size-8" />
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-3">
-                                <h4 className="text-2xl font-semibold tracking-tight text-slate-900">
-                                  {item.hotel_name || "Hotel Name"}
-                                </h4>
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  className="h-8 px-2 text-sm font-medium text-blue-700 hover:text-blue-800"
-                                  onClick={() => setHotelDetailsOpen(hotelKey)}
-                                >
-                                  More Info
-                                </Button>
-                                <span className="text-base text-slate-700">
-                                  {item.hotel_city || "Vadodara"}
-                                </span>
-                              </div>
-                              <p className="mt-2 text-base text-slate-800">
-                                {item.hotel_address || "Hotel address"}
-                              </p>
-                              <div className="mt-3 flex flex-wrap gap-2 text-sm text-slate-700">
-                                <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                                  Check in:{" "}
-                                  <strong className="font-medium text-slate-900">
-                                    {hotelDates.checkIn
-                                      ? formatTripDayDate(hotelDates.checkIn)
-                                      : "Date pending"}
-                                  </strong>
-                                </span>
-                                <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
-                                  Check out:{" "}
-                                  <strong className="font-medium text-slate-900">
-                                    {hotelDates.checkOut
-                                      ? formatTripDayDate(hotelDates.checkOut)
-                                      : "Date pending"}
-                                  </strong>
-                                </span>
-                              </div>
-                              <div className="mt-3 grid max-w-md gap-3 sm:grid-cols-2">
-                                <div className="space-y-1">
-                                  <Label>Check-in time ({hotelDates.checkIn})</Label>
-                                  <Input
-                                    required
-                                    type="time"
-                                    value={
-                                      typeof item.metadata?.check_in_time === "string"
-                                        ? item.metadata.check_in_time
-                                        : "15:00"
-                                    }
-                                    onChange={(event) =>
-                                      updateItem(dayIndex, itemIndex, {
-                                        metadata: {
-                                          ...(item.metadata ?? {}),
-                                          check_in_time: event.target.value,
-                                        },
-                                      })
-                                    }
-                                  />
-                                </div>
-                                <div className="space-y-1">
-                                  <Label>Check-out time ({hotelDates.checkOut})</Label>
-                                  <Input
-                                    required
-                                    type="time"
-                                    value={
-                                      typeof item.metadata?.check_out_time === "string"
-                                        ? item.metadata.check_out_time
-                                        : "11:00"
-                                    }
-                                    onChange={(event) =>
-                                      updateItem(dayIndex, itemIndex, {
-                                        metadata: {
-                                          ...(item.metadata ?? {}),
-                                          check_out_time: event.target.value,
-                                        },
-                                      })
-                                    }
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className="border-t border-slate-200 bg-white px-4 py-3">
-                            <div className="flex flex-wrap items-center gap-3">
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="h-9 border-slate-300 bg-white text-sm font-medium text-slate-700"
-                                onClick={() =>
-                                  document.getElementById(`custom-hotel-image-${hotelKey}`)?.click()
-                                }
-                              >
-                                <Upload className="mr-2 size-4" />
-                                {customHotelImage ? "Replace Custom Image" : "Upload Custom Image"}
-                              </Button>
-                              <input
-                                id={`custom-hotel-image-${hotelKey}`}
-                                type="file"
-                                accept="image/*"
-                                className="sr-only"
-                                onChange={async (event) => {
-                                  const file = event.target.files?.[0];
-                                  if (!file) return;
-                                  event.target.value = "";
-                                  try {
-                                    const imageUrl = await prepareCustomHotelImage(file);
-                                    updateItem(dayIndex, itemIndex, {
-                                      metadata: {
-                                        ...(item.metadata ?? {}),
-                                        custom_hotel_photo_url: imageUrl,
-                                      },
-                                    });
-                                  } catch (error) {
-                                    toast.error(
-                                      error instanceof Error
-                                        ? error.message
-                                        : "The hotel image could not be uploaded.",
-                                    );
-                                  }
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        <HotelGoogleDetailsEditor
-                          item={item}
-                          destination={item.hotel_city || destinationName || ""}
-                          onUpdate={(updates) => {
-                            updateItem(dayIndex, itemIndex, updates);
-                            if (!updates.hotel_name) return;
-                            const selectedHotelHtml = replaceHotelRecommendationInHtml(
-                              form.document_html,
-                              item.hotel_city ?? "",
-                              updates.hotel_name,
-                            );
-                            if (selectedHotelHtml !== form.document_html) {
-                              const safeHtml = sanitizeItineraryEditorHtml(selectedHotelHtml);
-                              if (itineraryEditorRef.current)
-                                itineraryEditorRef.current.innerHTML = safeHtml;
-                              setForm((current) => ({ ...current, document_html: safeHtml }));
+                        )}
+                      </div>
+                      {checkoutOnlyDay && hotels.length > 0 && (
+                        <p
+                          role="alert"
+                          className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+                        >
+                      The final trip day is checkout-only. Remove these entries and add the hotel to
+                      an earlier overnight day if needed; no hotel can check in on this date.
+                        </p>
+                      )}
+                      {hotels.length === 0 && (
+                        <p className="rounded-md border border-dashed border-slate-200 p-4 text-sm text-slate-500">
+                          No hotel added for this day yet.
+                        </p>
+                      )}
+                      {hotels.map(({ item, itemIndex }) => {
+                        const customHotelImage =
+                          typeof item.metadata?.custom_hotel_photo_url === "string"
+                            ? item.metadata.custom_hotel_photo_url
+                            : "";
+                        const hotelPlaceId =
+                          typeof item.metadata?.google_hotel_place_id === "string"
+                            ? item.metadata.google_hotel_place_id
+                            : "";
+                        const defaultHotelDates = hotelDatesForDay(day.date);
+                        const hotelDates = {
+                          checkIn: item.check_in || defaultHotelDates.checkIn,
+                          checkOut: item.check_out || defaultHotelDates.checkOut,
+                        };
+                        const hotelKey = item.id ?? `${dayIndex}-${itemIndex}`;
+                        return item.metadata?.hotel_saved === true ? (
+                          <SavedHotelSummary
+                            key={hotelKey}
+                            item={item}
+                            dayDate={day.date}
+                            onEdit={() =>
+                              updateItem(dayIndex, itemIndex, {
+                                metadata: { ...(item.metadata ?? {}), hotel_saved: false },
+                              })
                             }
-                          }}
-                          detailsOpen={hotelDetailsOpen === hotelKey}
-                          onDetailsOpenChange={(open) =>
-                            setHotelDetailsOpen(open ? hotelKey : null)
-                          }
-                        />
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <div className="space-y-1.5 md:col-span-2">
-                            <Label>Guest-facing notes</Label>
-                            <Textarea
-                              value={item.customer_facing_info ?? item.hotel_description ?? ""}
-                              onChange={(event) =>
-                                updateItem(dayIndex, itemIndex, {
-                                  customer_facing_info: event.target.value,
-                                  hotel_description: event.target.value,
-                                  description: event.target.value,
-                                })
-                              }
-                              rows={3}
-                              placeholder="Add hotel details for the itinerary"
-                            />
-                          </div>
-
-                          <div className="space-y-2 md:col-span-2">
-                            <div className="flex items-center justify-between gap-3">
-                              <Label className="text-base font-medium">Rooms</Label>
+                            onDelete={() => deleteItem(dayIndex, itemIndex)}
+                          />
+                        ) : (
+                          <div
+                            key={hotelKey}
+                            className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4"
+                            data-builder-type="ACCOMMODATION"
+                          >
+                            <div className="flex items-center justify-between">
+                              <h3 className="font-medium text-slate-900">Hotel Details</h3>
                               <Button
                                 type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={() => {
-                                  const rooms = getAccommodationRoomDetails(item);
-                                  const nextRooms = [
-                                    ...rooms,
-                                    {
-                                      id: crypto.randomUUID(),
-                                      room_type: "Room Type",
-                                      adults: 0,
-                                      kids: 0,
-                                      breakfast: false,
-                                      lunch: false,
-                                      dinner: false,
-                                      room_rate_per_night: 0,
-                                      free_cancellation_date: "",
-                                    },
-                                  ];
-                                  updateItem(dayIndex, itemIndex, {
-                                    metadata: { ...(item.metadata ?? {}), room_details: nextRooms },
-                                  });
-                                }}
+                                variant="ghost"
+                                size="icon"
+                                aria-label="Remove hotel"
+                                onClick={() => deleteItem(dayIndex, itemIndex)}
+                                className="text-rose-600 hover:text-rose-700"
                               >
-                                + Add Room
+                                <Trash2 className="size-4" />
                               </Button>
                             </div>
 
-                            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                              {getAccommodationRoomDetails(item).map((room, roomIndex) => (
-                                <div
-                                  key={room.id}
-                                  className="w-full rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
-                                >
-                                  <div className="mb-3 flex items-center justify-end">
+                            <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+                              <div className="flex items-start gap-4 p-4">
+                                <div className="h-24 w-28 shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100">
+                                  {customHotelImage ? (
+                                    <img
+                                      src={customHotelImage}
+                                      alt={item.hotel_name ?? "Hotel image"}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : hotelPlaceId ? (
+                                    <HotelPhotoPreview
+                                      placeId={hotelPlaceId}
+                                      savedPhotoUrl=""
+                                      hotelName={item.hotel_name ?? "Hotel"}
+                                      className="h-24 w-28 rounded-lg object-cover"
+                                    />
+                                  ) : (
+                                    <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-sky-100 to-slate-200 text-slate-500">
+                                      <ImagePlus className="size-8" />
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-3">
+                                    <h4 className="text-2xl font-semibold tracking-tight text-slate-900">
+                                      {item.hotel_name || "Hotel Name"}
+                                    </h4>
                                     <Button
                                       type="button"
                                       variant="ghost"
-                                      size="icon"
-                                      aria-label="Remove room"
-                                      onClick={() => {
-                                        const rooms = getAccommodationRoomDetails(item).filter(
-                                          (_, index) => index !== roomIndex,
-                                        );
-                                        updateItem(dayIndex, itemIndex, {
-                                          metadata: {
-                                            ...(item.metadata ?? {}),
-                                            room_details:
-                                              rooms.length > 0
-                                                ? rooms
-                                                : [
-                                                    {
-                                                      id: crypto.randomUUID(),
-                                                      room_type: item.room_type ?? "Room Type",
-                                                      adults: Number(item.adults ?? 0),
-                                                      kids: Number(item.children ?? 0),
-                                                      breakfast: false,
-                                                      lunch: false,
-                                                      dinner: false,
-                                                      room_rate_per_night: 0,
-                                                      free_cancellation_date: "",
-                                                    },
-                                                  ],
-                                          },
-                                        });
-                                      }}
-                                      className="text-rose-600 hover:text-rose-700"
+                                      size="sm"
+                                      className="h-8 px-2 text-sm font-medium text-blue-700 hover:text-blue-800"
+                                      onClick={() => setHotelDetailsOpen(hotelKey)}
                                     >
-                                      <Trash2 className="size-4" />
+                                      More Info
                                     </Button>
+                                    <span className="text-base text-slate-700">
+                                      {item.hotel_city || "Vadodara"}
+                                    </span>
                                   </div>
-                                  <div className="grid gap-3">
-                                    <div>
-                                      <Label>Room Type</Label>
+                                  <p className="mt-2 text-base text-slate-800">
+                                    {item.hotel_address || "Hotel address"}
+                                  </p>
+                                  <div className="mt-3 flex flex-wrap gap-2 text-sm text-slate-700">
+                                    <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                                      Check in:{" "}
+                                      <strong className="font-medium text-slate-900">
+                                        {hotelDates.checkIn
+                                          ? formatTripDayDate(hotelDates.checkIn)
+                                          : "Date pending"}
+                                      </strong>
+                                    </span>
+                                    <span className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2">
+                                      Check out:{" "}
+                                      <strong className="font-medium text-slate-900">
+                                        {hotelDates.checkOut
+                                          ? formatTripDayDate(hotelDates.checkOut)
+                                          : "Date pending"}
+                                      </strong>
+                                    </span>
+                                  </div>
+                                  <div className="mt-3 grid max-w-md gap-3 sm:grid-cols-2">
+                                    <div className="space-y-1">
+                                      <Label>Check-in time ({hotelDates.checkIn})</Label>
                                       <Input
-                                        value={room.room_type}
-                                        onChange={(event) => {
-                                          const rooms = getAccommodationRoomDetails(item).map(
-                                            (entry, index) =>
-                                              index === roomIndex
-                                                ? { ...entry, room_type: event.target.value }
-                                                : entry,
-                                          );
+                                        required
+                                        type="time"
+                                        value={
+                                          typeof item.metadata?.check_in_time === "string"
+                                            ? item.metadata.check_in_time
+                                            : "15:00"
+                                        }
+                                        onChange={(event) =>
                                           updateItem(dayIndex, itemIndex, {
                                             metadata: {
                                               ...(item.metadata ?? {}),
-                                              room_details: rooms,
+                                              check_in_time: event.target.value,
                                             },
-                                          });
-                                        }}
-                                        placeholder="Room Type"
+                                          })
+                                        }
                                       />
                                     </div>
-                                    <div className="grid gap-3 sm:grid-cols-2">
-                                      <div>
-                                        <Label>Adults</Label>
-                                        <Input
-                                          type="number"
-                                          min={0}
-                                          value={room.adults}
-                                          onChange={(event) => {
-                                            const rooms = getAccommodationRoomDetails(item).map(
-                                              (entry, index) =>
-                                                index === roomIndex
-                                                  ? {
-                                                      ...entry,
-                                                      adults: Number(event.target.value) || 0,
-                                                    }
-                                                  : entry,
-                                            );
-                                            updateItem(dayIndex, itemIndex, {
-                                              metadata: {
-                                                ...(item.metadata ?? {}),
-                                                room_details: rooms,
-                                              },
-                                            });
-                                          }}
-                                        />
-                                      </div>
-                                      <div>
-                                        <Label>Kids</Label>
-                                        <Input
-                                          type="number"
-                                          min={0}
-                                          value={room.kids}
-                                          onChange={(event) => {
-                                            const rooms = getAccommodationRoomDetails(item).map(
-                                              (entry, index) =>
-                                                index === roomIndex
-                                                  ? {
-                                                      ...entry,
-                                                      kids: Number(event.target.value) || 0,
-                                                    }
-                                                  : entry,
-                                            );
-                                            updateItem(dayIndex, itemIndex, {
-                                              metadata: {
-                                                ...(item.metadata ?? {}),
-                                                room_details: rooms,
-                                              },
-                                            });
-                                          }}
-                                        />
-                                      </div>
+                                    <div className="space-y-1">
+                                      <Label>Check-out time ({hotelDates.checkOut})</Label>
+                                      <Input
+                                        required
+                                        type="time"
+                                        value={
+                                          typeof item.metadata?.check_out_time === "string"
+                                            ? item.metadata.check_out_time
+                                            : "11:00"
+                                        }
+                                        onChange={(event) =>
+                                          updateItem(dayIndex, itemIndex, {
+                                            metadata: {
+                                              ...(item.metadata ?? {}),
+                                              check_out_time: event.target.value,
+                                            },
+                                          })
+                                        }
+                                      />
                                     </div>
-                                    <div className="flex flex-wrap gap-4">
-                                      {(
-                                        [
-                                          { key: "breakfast", label: "Breakfast" },
-                                          { key: "lunch", label: "Lunch" },
-                                          { key: "dinner", label: "Dinner" },
-                                        ] as const
-                                      ).map((meal) => (
-                                        <label
-                                          key={meal.key}
-                                          className="flex items-center gap-2 text-sm text-slate-700"
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="border-t border-slate-200 bg-white px-4 py-3">
+                                <div className="flex flex-wrap items-center gap-3">
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-9 border-slate-300 bg-white text-sm font-medium text-slate-700"
+                                    onClick={() =>
+                                  document.getElementById(`custom-hotel-image-${hotelKey}`)?.click()
+                                    }
+                                  >
+                                    <Upload className="mr-2 size-4" />
+                                {customHotelImage ? "Replace Custom Image" : "Upload Custom Image"}
+                                  </Button>
+                                  <input
+                                    id={`custom-hotel-image-${hotelKey}`}
+                                    type="file"
+                                    accept="image/*"
+                                    className="sr-only"
+                                    onChange={async (event) => {
+                                      const file = event.target.files?.[0];
+                                      if (!file) return;
+                                      event.target.value = "";
+                                      try {
+                                        const imageUrl = await prepareCustomHotelImage(file);
+                                        updateItem(dayIndex, itemIndex, {
+                                          metadata: {
+                                            ...(item.metadata ?? {}),
+                                            custom_hotel_photo_url: imageUrl,
+                                          },
+                                        });
+                                      } catch (error) {
+                                        toast.error(
+                                          error instanceof Error
+                                            ? error.message
+                                            : "The hotel image could not be uploaded.",
+                                        );
+                                      }
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            <HotelGoogleDetailsEditor
+                              item={item}
+                              destination={item.hotel_city || destinationName || ""}
+                              onUpdate={(updates) => {
+                                updateItem(dayIndex, itemIndex, updates);
+                                if (!updates.hotel_name) return;
+                                const selectedHotelHtml = replaceHotelRecommendationInHtml(
+                                  form.document_html,
+                                  item.hotel_city ?? "",
+                                  updates.hotel_name,
+                                );
+                                if (selectedHotelHtml !== form.document_html) {
+                                  const safeHtml = sanitizeItineraryEditorHtml(selectedHotelHtml);
+                                  if (itineraryEditorRef.current)
+                                    itineraryEditorRef.current.innerHTML = safeHtml;
+                                  setForm((current) => ({ ...current, document_html: safeHtml }));
+                                }
+                              }}
+                              detailsOpen={hotelDetailsOpen === hotelKey}
+                              onDetailsOpenChange={(open) =>
+                                setHotelDetailsOpen(open ? hotelKey : null)
+                              }
+                            />
+                            <div className="grid gap-4 md:grid-cols-2">
+                              <div className="space-y-1.5 md:col-span-2">
+                                <Label>Guest-facing notes</Label>
+                                <Textarea
+                                  value={item.customer_facing_info ?? item.hotel_description ?? ""}
+                                  onChange={(event) =>
+                                    updateItem(dayIndex, itemIndex, {
+                                      customer_facing_info: event.target.value,
+                                      hotel_description: event.target.value,
+                                      description: event.target.value,
+                                    })
+                                  }
+                                  rows={3}
+                                  placeholder="Add hotel details for the itinerary"
+                                />
+                              </div>
+
+                              <div className="space-y-2 md:col-span-2">
+                                <div className="flex items-center justify-between gap-3">
+                                  <Label className="text-base font-medium">Rooms</Label>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                      const rooms = getAccommodationRoomDetails(item);
+                                      const nextRooms = [
+                                        ...rooms,
+                                        {
+                                          id: crypto.randomUUID(),
+                                          room_type: "Room Type",
+                                          adults: 0,
+                                          kids: 0,
+                                          breakfast: false,
+                                          lunch: false,
+                                          dinner: false,
+                                          room_rate_per_night: 0,
+                                          free_cancellation_date: "",
+                                        },
+                                      ];
+                                      updateItem(dayIndex, itemIndex, {
+                                    metadata: { ...(item.metadata ?? {}), room_details: nextRooms },
+                                      });
+                                    }}
+                                  >
+                                    + Add Room
+                                  </Button>
+                                </div>
+
+                                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                                  {getAccommodationRoomDetails(item).map((room, roomIndex) => (
+                                    <div
+                                      key={room.id}
+                                      className="w-full rounded-lg border border-slate-200 bg-white p-3 shadow-sm"
+                                    >
+                                      <div className="mb-3 flex items-center justify-end">
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="icon"
+                                          aria-label="Remove room"
+                                          onClick={() => {
+                                            const rooms = getAccommodationRoomDetails(item).filter(
+                                              (_, index) => index !== roomIndex,
+                                            );
+                                            updateItem(dayIndex, itemIndex, {
+                                              metadata: {
+                                                ...(item.metadata ?? {}),
+                                                room_details:
+                                                  rooms.length > 0
+                                                    ? rooms
+                                                    : [
+                                                        {
+                                                          id: crypto.randomUUID(),
+                                                          room_type: item.room_type ?? "Room Type",
+                                                          adults: Number(item.adults ?? 0),
+                                                          kids: Number(item.children ?? 0),
+                                                          breakfast: false,
+                                                          lunch: false,
+                                                          dinner: false,
+                                                          room_rate_per_night: 0,
+                                                          free_cancellation_date: "",
+                                                        },
+                                                      ],
+                                              },
+                                            });
+                                          }}
+                                          className="text-rose-600 hover:text-rose-700"
                                         >
-                                          <input
-                                            type="checkbox"
-                                            checked={room[meal.key]}
+                                          <Trash2 className="size-4" />
+                                        </Button>
+                                      </div>
+                                      <div className="grid gap-3">
+                                        <div>
+                                          <Label>Room Type</Label>
+                                          <Input
+                                            value={room.room_type}
                                             onChange={(event) => {
                                               const rooms = getAccommodationRoomDetails(item).map(
                                                 (entry, index) =>
                                                   index === roomIndex
+                                                    ? { ...entry, room_type: event.target.value }
+                                                    : entry,
+                                              );
+                                              updateItem(dayIndex, itemIndex, {
+                                                metadata: {
+                                                  ...(item.metadata ?? {}),
+                                                  room_details: rooms,
+                                                },
+                                              });
+                                            }}
+                                            placeholder="Room Type"
+                                          />
+                                        </div>
+                                        <div className="grid gap-3 sm:grid-cols-2">
+                                          <div>
+                                            <Label>Adults</Label>
+                                            <Input
+                                              type="number"
+                                              min={0}
+                                              value={room.adults}
+                                              onChange={(event) => {
+                                                const rooms = getAccommodationRoomDetails(item).map(
+                                                  (entry, index) =>
+                                                    index === roomIndex
+                                                      ? {
+                                                          ...entry,
+                                                          adults: Number(event.target.value) || 0,
+                                                        }
+                                                      : entry,
+                                                );
+                                                updateItem(dayIndex, itemIndex, {
+                                                  metadata: {
+                                                    ...(item.metadata ?? {}),
+                                                    room_details: rooms,
+                                                  },
+                                                });
+                                              }}
+                                            />
+                                          </div>
+                                          <div>
+                                            <Label>Kids</Label>
+                                            <Input
+                                              type="number"
+                                              min={0}
+                                              value={room.kids}
+                                              onChange={(event) => {
+                                                const rooms = getAccommodationRoomDetails(item).map(
+                                                  (entry, index) =>
+                                                    index === roomIndex
+                                                      ? {
+                                                          ...entry,
+                                                          kids: Number(event.target.value) || 0,
+                                                        }
+                                                      : entry,
+                                                );
+                                                updateItem(dayIndex, itemIndex, {
+                                                  metadata: {
+                                                    ...(item.metadata ?? {}),
+                                                    room_details: rooms,
+                                                  },
+                                                });
+                                              }}
+                                            />
+                                          </div>
+                                        </div>
+                                        <div className="flex flex-wrap gap-4">
+                                          {(
+                                            [
+                                              { key: "breakfast", label: "Breakfast" },
+                                              { key: "lunch", label: "Lunch" },
+                                              { key: "dinner", label: "Dinner" },
+                                            ] as const
+                                          ).map((meal) => (
+                                            <label
+                                              key={meal.key}
+                                              className="flex items-center gap-2 text-sm text-slate-700"
+                                            >
+                                              <input
+                                                type="checkbox"
+                                                checked={room[meal.key]}
+                                                onChange={(event) => {
+                                              const rooms = getAccommodationRoomDetails(item).map(
+                                                (entry, index) =>
+                                                    index === roomIndex
                                                     ? { ...entry, [meal.key]: event.target.checked }
+                                                      : entry,
+                                                  );
+                                                  updateItem(dayIndex, itemIndex, {
+                                                    metadata: {
+                                                      ...(item.metadata ?? {}),
+                                                      room_details: rooms,
+                                                    },
+                                                  });
+                                                }}
+                                              />
+                                              {meal.label}
+                                            </label>
+                                          ))}
+                                        </div>
+                                        <div>
+                                      <Label>Room Rate Per Night ({room.currency || "INR"})</Label>
+                                          <Input
+                                            type="number"
+                                            min={0}
+                                            step="0.01"
+                                            value={room.room_rate_per_night}
+                                            onChange={(event) =>
+                                              updateRoomRate(
+                                                dayIndex,
+                                                itemIndex,
+                                                item,
+                                                roomIndex,
+                                                event.target.value,
+                                              )
+                                            }
+                                          />
+                                          <Select
+                                            value={room.currency || "INR"}
+                                            onValueChange={(currency) =>
+                                              updateRoomCurrency(
+                                                dayIndex,
+                                                itemIndex,
+                                                item,
+                                                roomIndex,
+                                                currency,
+                                              )
+                                            }
+                                          >
+                                            <SelectTrigger className="mt-2">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                              {POPULAR_CURRENCIES.map((currency) => (
+                                                <SelectItem key={currency} value={currency}>
+                                                  {currency}
+                                                </SelectItem>
+                                              ))}
+                                            </SelectContent>
+                                          </Select>
+                                          <InrEquivalent
+                                            amount={room.room_rate_per_night}
+                                            currency={room.currency || "INR"}
+                                            className="mt-2"
+                                          />
+                                        </div>
+                                        <div>
+                                          <Label>Free Cancellation Date</Label>
+                                          <Input
+                                            type="date"
+                                            value={room.free_cancellation_date}
+                                            onChange={(event) => {
+                                              const rooms = getAccommodationRoomDetails(item).map(
+                                                (entry, index) =>
+                                                  index === roomIndex
+                                                    ? {
+                                                        ...entry,
+                                                        free_cancellation_date: event.target.value,
+                                                      }
                                                     : entry,
                                               );
                                               updateItem(dayIndex, itemIndex, {
@@ -13746,138 +13958,65 @@ function ItineraryBuilderPage() {
                                               });
                                             }}
                                           />
-                                          {meal.label}
-                                        </label>
-                                      ))}
+                                        </div>
+                                      </div>
                                     </div>
-                                    <div>
-                                      <Label>Room Rate Per Night ({room.currency || "INR"})</Label>
-                                      <Input
-                                        type="number"
-                                        min={0}
-                                        step="0.01"
-                                        value={room.room_rate_per_night}
-                                        onChange={(event) =>
-                                          updateRoomRate(
-                                            dayIndex,
-                                            itemIndex,
-                                            item,
-                                            roomIndex,
-                                            event.target.value,
-                                          )
-                                        }
-                                      />
-                                      <Select
-                                        value={room.currency || "INR"}
-                                        onValueChange={(currency) =>
-                                          updateRoomCurrency(
-                                            dayIndex,
-                                            itemIndex,
-                                            item,
-                                            roomIndex,
-                                            currency,
-                                          )
-                                        }
-                                      >
-                                        <SelectTrigger className="mt-2">
-                                          <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                          {POPULAR_CURRENCIES.map((currency) => (
-                                            <SelectItem key={currency} value={currency}>
-                                              {currency}
-                                            </SelectItem>
-                                          ))}
-                                        </SelectContent>
-                                      </Select>
-                                      <InrEquivalent
-                                        amount={room.room_rate_per_night}
-                                        currency={room.currency || "INR"}
-                                        className="mt-2"
-                                      />
-                                    </div>
-                                    <div>
-                                      <Label>Free Cancellation Date</Label>
-                                      <Input
-                                        type="date"
-                                        value={room.free_cancellation_date}
-                                        onChange={(event) => {
-                                          const rooms = getAccommodationRoomDetails(item).map(
-                                            (entry, index) =>
-                                              index === roomIndex
-                                                ? {
-                                                    ...entry,
-                                                    free_cancellation_date: event.target.value,
-                                                  }
-                                                : entry,
-                                          );
-                                          updateItem(dayIndex, itemIndex, {
-                                            metadata: {
-                                              ...(item.metadata ?? {}),
-                                              room_details: rooms,
-                                            },
-                                          });
-                                        }}
-                                      />
-                                    </div>
-                                  </div>
+                                  ))}
                                 </div>
-                              ))}
+                              </div>
+                              <div className="flex justify-end border-t border-slate-200 pt-3">
+                                <Button
+                                  type="button"
+                                  disabled={saving || checkoutOnlyDay}
+                                  title={
+                                checkoutOnlyDay ? "The final trip day is checkout-only." : undefined
+                                  }
+                                  onClick={async () => {
+                                    const saved = await saveItinerary(
+                                      false,
+                                      item.hotel_name || "Hotel",
+                                      item.id,
+                                      "hotel",
+                                    );
+                                    if (saved) {
+                                      setDays((current) =>
+                                        current.map((currentDay) => ({
+                                          ...currentDay,
+                                          items: currentDay.items.map((currentItem) =>
+                                            currentItem.id === item.id
+                                              ? {
+                                                  ...currentItem,
+                                                  metadata: {
+                                                    ...(currentItem.metadata ?? {}),
+                                                    hotel_saved: true,
+                                                  },
+                                                }
+                                              : currentItem,
+                                          ),
+                                        })),
+                                      );
+                                    }
+                                  }}
+                                >
+                                  {saving
+                                    ? "Saving…"
+                                    : checkoutOnlyDay
+                                      ? "Checkout only"
+                                      : "Save Hotel"}
+                                </Button>
+                              </div>
                             </div>
                           </div>
-                          <div className="flex justify-end border-t border-slate-200 pt-3">
-                            <Button
-                              type="button"
-                              disabled={saving || checkoutOnlyDay}
-                              title={
-                                checkoutOnlyDay ? "The final trip day is checkout-only." : undefined
-                              }
-                              onClick={async () => {
-                                const saved = await saveItinerary(
-                                  false,
-                                  item.hotel_name || "Hotel",
-                                  item.id,
-                                  "hotel",
-                                );
-                                if (saved) {
-                                  setDays((current) =>
-                                    current.map((currentDay) => ({
-                                      ...currentDay,
-                                      items: currentDay.items.map((currentItem) =>
-                                        currentItem.id === item.id
-                                          ? {
-                                              ...currentItem,
-                                              metadata: {
-                                                ...(currentItem.metadata ?? {}),
-                                                hotel_saved: true,
-                                              },
-                                            }
-                                          : currentItem,
-                                      ),
-                                    })),
-                                  );
-                                }
-                              }}
-                            >
-                              {saving
-                                ? "Saving…"
-                                : checkoutOnlyDay
-                                  ? "Checkout only"
-                                  : "Save Hotel"}
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </section>
-              );
-            })}
-            {days.length === 0 && (
-              <p className="text-sm text-slate-500">
-                Set trip dates to create days, then add hotels.
-              </p>
-            )}
+                        );
+                      })}
+                    </section>
+                  );
+                })}
+                {days.length === 0 && (
+                  <p className="text-sm text-slate-500">
+                    Set trip dates to create days, then add hotels.
+                  </p>
+                )}
               </>
             )}
           </div>

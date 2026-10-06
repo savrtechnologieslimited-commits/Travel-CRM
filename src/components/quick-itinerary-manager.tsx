@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { AlertCircle, Check, Eye, LoaderCircle, Maximize2, Minus, Move, X } from "lucide-react";
 import { useServerFn } from "@tanstack/react-start";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,12 +13,14 @@ import {
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
+import type { Database } from "@/integrations/supabase/types";
 import { addImagesToItineraryFn } from "@/lib/itinerary-images";
 import {
   extractItineraryFromSupplierDocumentFn,
   extractSupplierDocumentTextFn,
 } from "@/lib/ai-supplier-itinerary-import";
 import {
+  createQuickItineraryDraftSnapshot,
   createQuickItineraryPreview,
   QUICK_ITINERARY_REQUEST_EVENT,
   type QuickItineraryRequest,
@@ -42,6 +45,7 @@ const PHASE_DETAILS: Record<QuickItineraryPhase, { label: string; target: number
 };
 
 export function QuickItineraryManager() {
+  const queryClient = useQueryClient();
   const extractText = useServerFn(extractSupplierDocumentTextFn);
   const extractItinerary = useServerFn(extractItineraryFromSupplierDocumentFn);
   const addImages = useServerFn(addImagesToItineraryFn);
@@ -191,6 +195,20 @@ export function QuickItineraryManager() {
               : "The itinerary is ready, but some images could not be loaded into the preview.",
           );
         }
+        const draftSaveLocation = await saveQuickItineraryDraft(
+          generated,
+          photoResolution.photos,
+          sourceText,
+        );
+        if (cancelled) return;
+        await queryClient.invalidateQueries({ queryKey: ["itinerary-drafts"] });
+        if (draftSaveLocation === "browser") {
+          setImageMessage((current) =>
+            [current, "Draft saved in this browser only because account sync is unavailable."]
+              .filter(Boolean)
+              .join(" "),
+          );
+        }
         const preview = createQuickItineraryPreview(generated, photoResolution.photos);
         setPreviewHtml(buildItineraryPdfHtml(preview));
         if (hotelNames.length === 0) {
@@ -216,7 +234,7 @@ export function QuickItineraryManager() {
     return () => {
       cancelled = true;
     };
-  }, [request]);
+  }, [queryClient, request]);
 
   useEffect(() => {
     if (!dragging) return;
@@ -375,8 +393,8 @@ export function QuickItineraryManager() {
             <DialogHeader>
               <DialogTitle>Quick itinerary preview</DialogTitle>
               <DialogDescription>
-                Your itinerary and hotel summary cards are ready. Review the customer-facing preview
-                before continuing.
+                Your itinerary and hotel summary cards are ready. This editable itinerary has also
+                been saved under Drafts, so closing the preview won’t discard it.
               </DialogDescription>
             </DialogHeader>
             <Button type="button" variant="outline" size="sm" onClick={dismiss}>
@@ -503,4 +521,67 @@ async function resolvePreviewPhotos(
     }),
     failed,
   };
+}
+
+async function saveQuickItineraryDraft(
+  generated: SupplierImportResult,
+  photos: Awaited<ReturnType<typeof resolvePreviewPhotos>>["photos"],
+  sourceText: string,
+): Promise<"account" | "browser"> {
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  if (authError) throw authError;
+  if (!authData.user) throw new Error("Sign in before generating a quick itinerary draft.");
+
+  const draftId = crypto.randomUUID();
+  const snapshot = createQuickItineraryDraftSnapshot(generated, photos, sourceText);
+  const draftData =
+    snapshot as unknown as Database["public"]["Tables"]["itinerary_drafts"]["Insert"]["draft_data"];
+  let databaseError: unknown = null;
+
+  try {
+    const { error } = await supabase.from("itinerary_drafts").upsert(
+      {
+        id: draftId,
+        user_id: authData.user.id,
+        itinerary_id: null,
+        lead_id: null,
+        draft_data: draftData,
+      },
+      { onConflict: "id" },
+    );
+    if (error) throw error;
+  } catch (error) {
+    databaseError = error;
+    console.warn(
+      "[Quick itinerary] Account draft save failed; trying browser draft storage.",
+      error,
+    );
+  }
+
+  let browserStorageError: unknown = null;
+  try {
+    const storageBaseKey = `savr-itinerary-draft:${authData.user.id}:draft-${draftId}`;
+    window.localStorage.setItem(`${storageBaseKey}:id`, draftId);
+    window.localStorage.setItem(
+      `${storageBaseKey}:snapshot`,
+      JSON.stringify({ savedAt: Date.now(), snapshot }),
+    );
+    window.localStorage.setItem(`savr-itinerary-last-draft:${authData.user.id}`, draftId);
+  } catch (error) {
+    browserStorageError = error;
+    console.warn("[Quick itinerary] Browser draft backup failed.", error);
+  }
+
+  if (databaseError && browserStorageError) {
+    const databaseMessage =
+      databaseError instanceof Error ? databaseError.message : "Account draft storage failed.";
+    const browserMessage =
+      browserStorageError instanceof Error
+        ? browserStorageError.message
+        : "Browser draft storage failed.";
+    throw new Error(
+      `Could not save the quick itinerary draft. ${databaseMessage} ${browserMessage}`,
+    );
+  }
+  return databaseError ? "browser" : "account";
 }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createQuickItineraryPreview } from "./quick-itinerary";
+import { createQuickItineraryDraftSnapshot, createQuickItineraryPreview } from "./quick-itinerary";
 import { buildItineraryPdfHtml } from "./itinerary-pdf";
 import type { SupplierImportResult } from "./ai-supplier-itinerary-import.server";
 
@@ -50,5 +50,31 @@ describe("quick itinerary preview", () => {
     const html = buildItineraryPdfHtml(preview);
     expect(html).toContain("Baku Marriott Hotel Boulevard");
     expect(html).toContain("OVERALL HOTEL BOOKING");
+
+    const draft = createQuickItineraryDraftSnapshot(
+      result,
+      [
+        {
+          dayIndex: 0,
+          itemIndex: 0,
+          url: "https://example.com/hotel.jpg",
+          storagePath: "drafts/hotel.jpg",
+          placeName: "Baku Marriott Hotel Boulevard",
+        },
+      ],
+      "Supplier source itinerary",
+    );
+    expect(draft.form.title).toBe("Baku Tour");
+    expect(draft.form.status).toBe("DRAFT");
+    expect(draft.days[0]?.items[0]).toMatchObject({
+      title: "Baku Marriott Hotel Boulevard",
+      item_type: "ACCOMMODATION",
+      metadata: { overall_hotel_booking: true },
+    });
+    expect(draft.form.photos[0]).toMatchObject({
+      storage_path: "drafts/hotel.jpg",
+      day_item_id: draft.days[0]?.items[0]?.id,
+    });
+    expect(draft.supplierDetails).toBe("Supplier source itinerary");
   });
 });

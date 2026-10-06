@@ -2046,6 +2046,58 @@ export type Database = {
           },
         ];
       };
+      itinerary_drafts: {
+        Row: {
+          created_at: string;
+          draft_data: Json;
+          id: string;
+          itinerary_id: string | null;
+          lead_id: string | null;
+          updated_at: string;
+          user_id: string;
+        };
+        Insert: {
+          created_at?: string;
+          draft_data: Json;
+          id?: string;
+          itinerary_id?: string | null;
+          lead_id?: string | null;
+          updated_at?: string;
+          user_id: string;
+        };
+        Update: {
+          created_at?: string;
+          draft_data?: Json;
+          id?: string;
+          itinerary_id?: string | null;
+          lead_id?: string | null;
+          updated_at?: string;
+          user_id?: string;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "itinerary_drafts_itinerary_id_fkey";
+            columns: ["itinerary_id"];
+            isOneToOne: false;
+            referencedRelation: "itineraries";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "itinerary_drafts_lead_id_fkey";
+            columns: ["lead_id"];
+            isOneToOne: false;
+            referencedRelation: "leads";
+            referencedColumns: ["id"];
+          },
+          {
+            foreignKeyName: "itinerary_drafts_user_id_fkey";
+            columns: ["user_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          },
+        ];
+      };
       itinerary_days: {
         Row: {
           activities: string[] | null;
@@ -2066,58 +2118,6 @@ export type Database = {
           updated_at: string;
         };
         Insert: {
-          itinerary_drafts: {
-            Row: {
-              created_at: string;
-              draft_data: Json;
-              id: string;
-              itinerary_id: string | null;
-              lead_id: string | null;
-              updated_at: string;
-              user_id: string;
-            };
-            Insert: {
-              created_at?: string;
-              draft_data: Json;
-              id?: string;
-              itinerary_id?: string | null;
-              lead_id?: string | null;
-              updated_at?: string;
-              user_id: string;
-            };
-            Update: {
-              created_at?: string;
-              draft_data?: Json;
-              id?: string;
-              itinerary_id?: string | null;
-              lead_id?: string | null;
-              updated_at?: string;
-              user_id?: string;
-            };
-            Relationships: [
-              {
-                foreignKeyName: "itinerary_drafts_itinerary_id_fkey";
-                columns: ["itinerary_id"];
-                isOneToOne: false;
-                referencedRelation: "itineraries";
-                referencedColumns: ["id"];
-              },
-              {
-                foreignKeyName: "itinerary_drafts_lead_id_fkey";
-                columns: ["lead_id"];
-                isOneToOne: false;
-                referencedRelation: "leads";
-                referencedColumns: ["id"];
-              },
-              {
-                foreignKeyName: "itinerary_drafts_user_id_fkey";
-                columns: ["user_id"];
-                isOneToOne: false;
-                referencedRelation: "profiles";
-                referencedColumns: ["id"];
-              },
-            ];
-          };
           activities?: string[] | null;
           city?: string | null;
           created_at?: string;

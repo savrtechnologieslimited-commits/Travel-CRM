@@ -40,6 +40,7 @@ import {
   engineSendText,
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
+import { isValidCollectInput } from "./input-validation";
 import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
 import {
@@ -2048,6 +2049,32 @@ async function handleReplyForActiveRun(
   ) {
     const cfg = currentNode.config as unknown as CollectInputNodeConfig;
     const captured = message.text.trim();
+    if (!isValidCollectInput(captured, cfg)) {
+      try {
+        await engineSendText({
+          accountId: run.account_id,
+          userId: run.user_id,
+          conversationId: run.conversation_id!,
+          contactId: run.contact_id!,
+          text: interpolateVars(cfg.prompt_text, run.vars),
+        });
+        await logEvent(db, run.id, "fallback_fired", currentNode.node_key, {
+          action: "reprompt",
+          reason: "input_validation_failed",
+          validation: cfg.validation ?? "prompt_format",
+        });
+      } catch (err) {
+        await logEvent(db, run.id, "error", currentNode.node_key, {
+          reason: "invalid_input_reprompt_failed",
+          detail: err instanceof Error ? err.message : String(err),
+        });
+      }
+      return {
+        consumed: true,
+        flow_run_id: run.id,
+        outcome: "fallback_fired",
+      };
+    }
     if (captured.length > 0 && cfg.var_key) {
       // Persist captured value + reset reprompt count atomically.
       const newVars = { ...run.vars, [cfg.var_key]: captured };

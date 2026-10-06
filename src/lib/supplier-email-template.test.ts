@@ -48,9 +48,33 @@ describe("supplier email templates", () => {
     });
   });
 
+  test("escapes placeholder data when rendering a rich-text template", () => {
+    const rendered = renderSupplierEmailTemplate(
+      {
+        subject: "Trip",
+        body: "<p>{{client_name}}</p>",
+        signature: "<p>{{assigned_team_member}}</p>",
+      },
+      {
+        supplier_name: "",
+        contact_name: "",
+        client_name: '<img src=x onerror="alert(1)">',
+        lead_name: "",
+        crm_lead_id: "",
+        assigned_team_member: "<script>alert(1)</script>",
+        destination: "",
+        trip_start_date: "",
+        trip_end_date: "",
+        client_requirement: "",
+      },
+    );
+    expect(rendered.body).toBe("<p>&lt;img src=x onerror=&quot;alert(1)&quot;&gt;</p>");
+    expect(rendered.signature).toBe("<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>");
+  });
+
   test("appends the editable signature to the composed email body", () => {
     expect(appendSupplierEmailSignature("Enquiry details\n", "Regards,\nNeha")).toBe(
-      "Enquiry details\n\nRegards,\nNeha",
+      "Enquiry details<br><br>Regards,<br>Neha",
     );
     expect(appendSupplierEmailSignature("Enquiry details", "  ")).toBe("Enquiry details");
   });

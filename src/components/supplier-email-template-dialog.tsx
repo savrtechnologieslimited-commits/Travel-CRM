@@ -1,5 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Settings2 } from "lucide-react";
+import {
+  EmailRichTextEditor,
+  type EmailRichTextEditorHandle,
+} from "@/components/email-rich-text-editor";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,7 +15,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { useAppSettings, useSaveAppSetting } from "@/lib/data";
 import {
   DEFAULT_SUPPLIER_EMAIL_TEMPLATE,
@@ -26,8 +29,8 @@ export function SupplierEmailTemplateDialog() {
   const [open, setOpen] = useState(false);
   const [template, setTemplate] = useState(DEFAULT_SUPPLIER_EMAIL_TEMPLATE);
   const subjectRef = useRef<HTMLInputElement>(null);
-  const bodyRef = useRef<HTMLTextAreaElement>(null);
-  const signatureRef = useRef<HTMLTextAreaElement>(null);
+  const bodyRef = useRef<EmailRichTextEditorHandle>(null);
+  const signatureRef = useRef<EmailRichTextEditorHandle>(null);
   const { data: settings = [] } = useAppSettings();
   const saveSetting = useSaveAppSetting();
   const templateSetting = settings.find(
@@ -43,13 +46,17 @@ export function SupplierEmailTemplateDialog() {
   }, [open, savedTemplate]);
 
   function insertPlaceholder(field: EditableField, token: string) {
-    const ref = field === "subject" ? subjectRef : field === "body" ? bodyRef : signatureRef;
-    const input = ref.current;
     const placeholder = `{{${token}}}`;
+    if (field !== "subject") {
+      const editor = field === "body" ? bodyRef.current : signatureRef.current;
+      editor?.insertText(placeholder);
+      return;
+    }
+    const input = subjectRef.current;
     if (!input) {
       setTemplate((current) => ({
         ...current,
-        [field]: `${current[field]}${placeholder}`,
+        subject: `${current.subject}${placeholder}`,
       }));
       return;
     }
@@ -58,7 +65,7 @@ export function SupplierEmailTemplateDialog() {
     const end = input.selectionEnd ?? start;
     setTemplate((current) => ({
       ...current,
-      [field]: `${current[field].slice(0, start)}${placeholder}${current[field].slice(end)}`,
+      subject: `${current.subject.slice(0, start)}${placeholder}${current.subject.slice(end)}`,
     }));
     requestAnimationFrame(() => {
       input.focus();
@@ -148,15 +155,12 @@ export function SupplierEmailTemplateDialog() {
 
           <div className="space-y-2">
             <Label htmlFor="supplier-template-body">Email body</Label>
-            <Textarea
+            <EmailRichTextEditor
               id="supplier-template-body"
               ref={bodyRef}
               rows={15}
-              className="font-mono text-sm"
               value={template.body}
-              onChange={(event) =>
-                setTemplate((current) => ({ ...current, body: event.target.value }))
-              }
+              onChange={(body) => setTemplate((current) => ({ ...current, body }))}
             />
           </div>
 
@@ -182,15 +186,12 @@ export function SupplierEmailTemplateDialog() {
                 </Button>
               ))}
             </div>
-            <Textarea
+            <EmailRichTextEditor
               id="supplier-template-signature"
               ref={signatureRef}
               rows={5}
-              className="font-mono text-sm"
               value={template.signature}
-              onChange={(event) =>
-                setTemplate((current) => ({ ...current, signature: event.target.value }))
-              }
+              onChange={(signature) => setTemplate((current) => ({ ...current, signature }))}
             />
           </div>
 

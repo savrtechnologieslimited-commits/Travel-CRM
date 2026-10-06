@@ -1,6 +1,13 @@
 import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { createClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
+import {
+  buildEmailMimeMessage,
+  htmlToPlainText,
+  prepareEmailHtml,
+  validateEmailAttachments,
+  type EmailAttachment,
+} from "@/lib/email-content";
 
 export const GMAIL_SCOPES = [
   "https://www.googleapis.com/auth/gmail.readonly",
@@ -667,14 +674,41 @@ export const sendSupplierInquiryEmail = createServerFn({ method: "POST" })
       to: string;
       subject: string;
       body: string;
+      attachments?: EmailAttachment[];
     }) => data,
   )
   .handler(async ({ data, context }) => {
     const userId = context?.userId ?? (context as any)?.supabase?.auth?.user?.id;
     if (!userId) throw new Error("Authenticated user is required");
 
+    const bodyInput: unknown = data.body;
+    const attachmentInput: unknown = data.attachments;
+    if (typeof bodyInput !== "string") {
+      throw new Error("Email message content is invalid.");
+    }
+    if (
+      attachmentInput !== undefined &&
+      (!Array.isArray(attachmentInput) ||
+        !attachmentInput.every(
+          (attachment) =>
+            attachment &&
+            typeof attachment.name === "string" &&
+            typeof attachment.mimeType === "string" &&
+            typeof attachment.data === "string",
+        ))
+    ) {
+      throw new Error("One or more email attachments are invalid.");
+    }
+    const attachments = (attachmentInput ?? []) as EmailAttachment[];
+    if (
+      bodyInput.length +
+        attachments.reduce((total, attachment) => total + attachment.data.length, 0) >
+      4 * 1024 * 1024
+    ) {
+      throw new Error("Email content and attachments are too large to send.");
+    }
     const subject = data.subject.replace(/[\r\n]+/g, " ").trim();
-    const body = data.body.trim();
+    const { html: body, inlineImages } = prepareEmailHtml(bodyInput);
     const recipients = data.to
       .split(",")
       .map((email) => email.trim())
@@ -688,8 +722,10 @@ export const sendSupplierInquiryEmail = createServerFn({ method: "POST" })
       throw new Error("Enter one to ten valid recipient email addresses, separated by commas");
     }
     const to = recipients.join(", ");
-    if (!subject || !body) throw new Error("Email subject and details are required");
-    if (body.length > 100_000) throw new Error("Email details are too long");
+    if (!subject || (!htmlToPlainText(body) && !/<img\b/i.test(body))) {
+      throw new Error("Email subject and message are required");
+    }
+    validateEmailAttachments(attachments, inlineImages);
 
     const supabaseAdmin = await getSupabaseAdminClient();
     if (data.supplierId) {
@@ -755,21 +791,14 @@ export const sendSupplierInquiryEmail = createServerFn({ method: "POST" })
       const token = (await refreshResponse.json()) as { access_token?: string };
       if (!token.access_token) throw new Error("Google did not provide a Gmail access token");
 
-      const encodedSubject = btoa(unescape(encodeURIComponent(subject)));
-      const encodedBody =
-        btoa(unescape(encodeURIComponent(body)))
-          .match(/.{1,76}/g)
-          ?.join("\r\n") ?? "";
-      const mimeMessage = [
-        `From: ${connection.google_email}`,
-        `To: ${to}`,
-        `Subject: =?UTF-8?B?${encodedSubject}?=`,
-        "MIME-Version: 1.0",
-        "Content-Type: text/plain; charset=UTF-8",
-        "Content-Transfer-Encoding: base64",
-        "",
-        encodedBody,
-      ].join("\r\n");
+      const mimeMessage = buildEmailMimeMessage({
+        from: connection.google_email,
+        to,
+        subject,
+        html: body,
+        attachments,
+        inlineImages,
+      });
       const raw = btoa(unescape(encodeURIComponent(mimeMessage)))
         .replace(/\+/g, "-")
         .replace(/\//g, "_")
@@ -826,21 +855,125 @@ export const sendSupplierInquiryEmail = createServerFn({ method: "POST" })
           "Zoho Mail authorization expired. Disconnect and reconnect the Zoho account.",
         );
       }
+      const apiDomain = String(connection.api_domain).replace(/\/$/, "");
+      const accountUrl = `${apiDomain}/api/accounts/${encodeURIComponent(connection.account_id)}`;
+      const authHeader = `Zoho-oauthtoken ${token.access_token}`;
+      const uploadedInline = await Promise.all(
+        inlineImages.map(async (image) => {
+          const uploadUrl = new URL(`${accountUrl}/messages/attachments`);
+          uploadUrl.searchParams.set("fileName", image.name);
+          uploadUrl.searchParams.set("isInline", "true");
+          const uploadResponse = await fetch(uploadUrl, {
+            method: "POST",
+            headers: {
+              Authorization: authHeader,
+              "Content-Type": image.mimeType,
+              Accept: "application/json",
+            },
+            body: Buffer.from(image.data, "base64"),
+          });
+          const uploadResult = (await uploadResponse.json().catch(() => ({}))) as {
+            status?: { code?: number; description?: string };
+            data?: {
+              storeName?: string;
+              attachmentName?: string;
+              attachmentPath?: string;
+              url?: string;
+            };
+          };
+          if (
+            !uploadResponse.ok ||
+            uploadResult.status?.code !== 200 ||
+            !uploadResult.data?.storeName ||
+            !uploadResult.data.attachmentName ||
+            !uploadResult.data.attachmentPath ||
+            !uploadResult.data.url
+          ) {
+            throw new Error(
+              uploadResult.status?.description ?? "Zoho Mail could not upload an inline image.",
+            );
+          }
+          return {
+            ...uploadResult.data,
+            contentId: image.contentId,
+            url: new URL(uploadResult.data.url, apiDomain).toString(),
+          };
+        }),
+      );
+      let zohoBody = body;
+      for (const image of uploadedInline) {
+        zohoBody = zohoBody.replaceAll(`cid:${image.contentId}`, image.url);
+      }
+
+      let uploadedAttachments: Array<{
+        storeName: string;
+        attachmentName: string;
+        attachmentPath: string;
+      }> = [];
+      if (attachments.length) {
+        const formData = new FormData();
+        for (const attachment of attachments) {
+          formData.append(
+            "attach",
+            new Blob([Buffer.from(attachment.data, "base64")], {
+              type: attachment.mimeType,
+            }),
+            attachment.name,
+          );
+        }
+        const uploadResponse = await fetch(
+          `${accountUrl}/messages/attachments?uploadType=multipart&isInline=false`,
+          {
+            method: "POST",
+            headers: { Authorization: authHeader, Accept: "application/json" },
+            body: formData,
+          },
+        );
+        const uploadResult = (await uploadResponse.json().catch(() => ({}))) as {
+          status?: { code?: number; description?: string };
+          data?: Array<{
+            storeName?: string;
+            attachmentName?: string;
+            attachmentPath?: string;
+          }>;
+        };
+        if (
+          !uploadResponse.ok ||
+          uploadResult.status?.code !== 200 ||
+          !Array.isArray(uploadResult.data) ||
+          uploadResult.data.length !== attachments.length ||
+          uploadResult.data.some(
+            (attachment) =>
+              !attachment.storeName || !attachment.attachmentName || !attachment.attachmentPath,
+          )
+        ) {
+          throw new Error(
+            uploadResult.status?.description ?? "Zoho Mail could not upload the attachments.",
+          );
+        }
+        uploadedAttachments = uploadResult.data as typeof uploadedAttachments;
+      }
+
       const sendResponse = await fetch(
         `${String(connection.api_domain).replace(/\/$/, "")}/api/accounts/${encodeURIComponent(connection.account_id)}/messages`,
         {
           method: "POST",
           headers: {
-            Authorization: `Zoho-oauthtoken ${token.access_token}`,
+            Authorization: authHeader,
             "Content-Type": "application/json",
           },
           body: JSON.stringify({
             fromAddress: connection.google_email,
             toAddress: to,
             subject,
-            content: body,
-            mailFormat: "plaintext",
+            content: zohoBody,
+            mailFormat: "html",
             encoding: "UTF-8",
+            attachments: [...uploadedInline, ...uploadedAttachments].map((attachment) => ({
+              attachmentName: attachment.attachmentName,
+              attachmentPath: attachment.attachmentPath,
+              storeName: attachment.storeName,
+            })),
           }),
         },
       );

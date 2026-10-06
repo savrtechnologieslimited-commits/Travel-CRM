@@ -2,7 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Mail, Send } from "lucide-react";
+import { Mail, Paperclip, Send, X } from "lucide-react";
+import { EmailRichTextEditor } from "@/components/email-rich-text-editor";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -21,7 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { useAppSettings, useProfiles, useSuppliersFull } from "@/lib/data";
 import { formatDate } from "@/lib/crm";
 import { supabase } from "@/integrations/supabase/client";
@@ -32,6 +32,12 @@ import {
   renderSupplierEmailTemplate,
   type SupplierEmailTemplate,
 } from "@/lib/supplier-email-template";
+import {
+  MAX_EMAIL_ATTACHMENT_BYTES,
+  MAX_EMAIL_ATTACHMENTS,
+  type EmailAttachment,
+  htmlToPlainText,
+} from "@/lib/email-content";
 
 export type LeadSupplierEmailDetails = {
   id: string;
@@ -78,6 +84,8 @@ export function LeadSupplierEmailDialog({ lead }: { lead: LeadSupplierEmailDetai
   const [recipient, setRecipient] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [attachments, setAttachments] = useState<EmailAttachment[]>([]);
+  const [readingAttachments, setReadingAttachments] = useState(false);
   const [error, setError] = useState("");
   const { data: suppliers = [], isLoading: suppliersLoading } = useSuppliersFull();
   const { data: profiles = [] } = useProfiles();
@@ -151,6 +159,7 @@ export function LeadSupplierEmailDialog({ lead }: { lead: LeadSupplierEmailDetai
     const rendered = renderEmailForSupplier(emailLead, firstSupplier, profiles, savedTemplate);
     setSubject(rendered.subject);
     setBody(rendered.body);
+    setAttachments([]);
     setError("");
   }, [open, emailLead, supplierOptions, mailAccounts, profiles, savedTemplate]);
 
@@ -173,6 +182,7 @@ export function LeadSupplierEmailDialog({ lead }: { lead: LeadSupplierEmailDetai
           to: recipients.join(", "),
           subject,
           body,
+          attachments,
         },
       });
       toast.success(
@@ -320,17 +330,95 @@ export function LeadSupplierEmailDialog({ lead }: { lead: LeadSupplierEmailDetai
           </div>
           <div className="space-y-2">
             <Label htmlFor={`supplier-email-body-${lead.id}`}>Email body</Label>
-            <Textarea
+            <EmailRichTextEditor
               id={`supplier-email-body-${lead.id}`}
-              required
-              rows={16}
               value={body}
-              onChange={(event) => setBody(event.target.value)}
+              rows={16}
+              onChange={setBody}
             />
             <p className="text-xs text-muted-foreground">
-              Customer contact details, budget, and internal notes are not included automatically.
-              Review the details before sending.
+              Format your message, insert inline images, and review the details before sending.
             </p>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor={`supplier-email-attachments-${lead.id}`}>Attachments</Label>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  document.getElementById(`supplier-email-attachments-${lead.id}`)?.click()
+                }
+              >
+                <Paperclip className="size-4" />
+                Attach files
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Up to {MAX_EMAIL_ATTACHMENTS} files; 2.5 MB total including inline images.
+              </span>
+            </div>
+            <input
+              id={`supplier-email-attachments-${lead.id}`}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                const files = Array.from(event.currentTarget.files ?? []);
+                event.currentTarget.value = "";
+                const totalBytes =
+                  attachments.reduce((total, file) => {
+                    const base64Length = file.data.length;
+                    return total + Math.floor((base64Length * 3) / 4);
+                  }, 0) + files.reduce((total, file) => total + file.size, 0);
+                if (attachments.length + files.length > MAX_EMAIL_ATTACHMENTS) {
+                  setError(`Attach no more than ${MAX_EMAIL_ATTACHMENTS} files.`);
+                  return;
+                }
+                if (totalBytes > MAX_EMAIL_ATTACHMENT_BYTES) {
+                  setError("Email attachments and inline images must total 2.5 MB or less.");
+                  return;
+                }
+                setError("");
+                setReadingAttachments(true);
+                void Promise.all(files.map(fileToEmailAttachment))
+                  .then((newFiles) => setAttachments((current) => [...current, ...newFiles]))
+                  .catch((readError: unknown) =>
+                    setError(
+                      readError instanceof Error
+                        ? readError.message
+                        : "Could not read an attachment.",
+                    ),
+                  )
+                  .finally(() => setReadingAttachments(false));
+              }}
+            />
+            {attachments.length > 0 && (
+              <ul className="space-y-1">
+                {attachments.map((attachment, index) => (
+                  <li
+                    key={`${attachment.name}-${index}`}
+                    className="flex items-center justify-between gap-2 rounded border px-3 py-2 text-sm"
+                  >
+                    <span className="truncate">{attachment.name}</span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-7 shrink-0"
+                      aria-label={`Remove ${attachment.name}`}
+                      onClick={() =>
+                        setAttachments((current) =>
+                          current.filter((_, itemIndex) => itemIndex !== index),
+                        )
+                      }
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
           {error && (
             <p role="alert" className="text-sm text-destructive">
@@ -355,7 +443,8 @@ export function LeadSupplierEmailDialog({ lead }: { lead: LeadSupplierEmailDetai
                 ) ||
                 !recipient.trim() ||
                 !subject.trim() ||
-                !body.trim()
+                (!htmlToPlainText(body).trim() && !/<img\b/i.test(body)) ||
+                readingAttachments
               }
             >
               <Send className="mr-2 size-4" /> Send inquiry
@@ -365,4 +454,18 @@ export function LeadSupplierEmailDialog({ lead }: { lead: LeadSupplierEmailDetai
       </DialogContent>
     </Dialog>
   );
+}
+
+async function fileToEmailAttachment(file: File): Promise<EmailAttachment> {
+  const arrayBuffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = "";
+  for (let offset = 0; offset < bytes.length; offset += 0x8000) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x8000));
+  }
+  return {
+    name: file.name,
+    mimeType: file.type || "application/octet-stream",
+    data: btoa(binary),
+  };
 }

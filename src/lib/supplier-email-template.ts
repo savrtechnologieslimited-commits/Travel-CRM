@@ -1,3 +1,5 @@
+import { escapeEmailHtml, toEmailHtml } from "./email-content";
+
 export type SupplierEmailTemplate = {
   subject: string;
   body: string;
@@ -76,20 +78,35 @@ export function renderSupplierEmailTemplate(
   template: SupplierEmailTemplate,
   values: Record<SupplierEmailPlaceholder, string>,
 ): SupplierEmailTemplate {
-  const render = (text: string) =>
+  const render = (text: string, richText: boolean) =>
     text.replace(/\{\{([a-z_]+)\}\}/g, (placeholder, name: string) =>
-      name in values ? values[name as SupplierEmailPlaceholder] : placeholder,
+      name in values
+        ? richText
+          ? escapeEmailHtml(values[name as SupplierEmailPlaceholder])
+          : values[name as SupplierEmailPlaceholder]
+        : placeholder,
     );
   return {
-    subject: render(template.subject),
-    body: render(template.body),
-    signature: render(template.signature),
+    subject: render(template.subject, false),
+    body: render(
+      template.body,
+      /<(?:a|b|blockquote|br|div|em|h[1-3]|hr|i|img|li|ol|p|span|strong|u|ul)\b/i.test(
+        template.body,
+      ),
+    ),
+    signature: render(
+      template.signature,
+      /<(?:a|b|blockquote|br|div|em|h[1-3]|hr|i|img|li|ol|p|span|strong|u|ul)\b/i.test(
+        template.signature,
+      ),
+    ),
   };
 }
 
 export function appendSupplierEmailSignature(body: string, signature: string): string {
-  const trimmedSignature = signature.trim();
+  const trimmedSignature = toEmailHtml(signature.trim());
   if (!trimmedSignature) return body;
-  const trimmedBody = body.trimEnd();
-  return trimmedBody ? `${trimmedBody}\n\n${trimmedSignature}` : trimmedSignature;
+  const bodyHtml = toEmailHtml(body.trimEnd());
+  const trimmedBody = bodyHtml.trimEnd();
+  return trimmedBody ? `${trimmedBody}<br><br>${trimmedSignature}` : trimmedSignature;
 }

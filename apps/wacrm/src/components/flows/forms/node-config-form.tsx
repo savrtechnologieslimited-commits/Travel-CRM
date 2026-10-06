@@ -48,11 +48,13 @@ import {
 import { cn } from "@/lib/utils";
 import { uploadAccountMedia, MEDIA_MAX_BYTES } from "@/lib/storage/upload-media";
 import type {
+  CollectInputNodeConfig,
   TravelCrmCompleteEnquiryNodeConfig,
   TravelCrmEnquiryField,
   TravelCrmGetDestinationNodeConfig,
   TravelCrmGetDestinationsNodeConfig,
 } from "@/lib/flows/types";
+import { formatCollectInputPrompt } from "@/lib/flows/input-validation";
 import { slugify, type BuilderNode } from "../shared";
 import { NextNodeRow, NodeKeySelect, TextRow } from "./fields";
 
@@ -234,7 +236,13 @@ export function NodeConfigForm({
         <>
           <TextRow
             label={t("promptToCustomer")}
-            value={(cfg as { prompt_text?: string }).prompt_text ?? ""}
+            value={formatCollectInputPrompt(
+              (cfg as { prompt_text?: string }).prompt_text ?? "",
+              cfg as Pick<
+                CollectInputNodeConfig,
+                "prompt_text" | "validation"
+              >,
+            )}
             onChange={(v) => onUpdateConfig({ prompt_text: v })}
             rows={2}
           />

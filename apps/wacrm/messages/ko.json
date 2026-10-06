@@ -1203,7 +1203,7 @@
         "inputValidationAny": "비어 있지 않은 모든 텍스트",
         "inputValidationEmail": "이메일 주소",
         "inputValidationPhone": "전화번호",
-        "inputValidationDate": "날짜 (YYYY-MM-DD)",
+        "inputValidationDate": "날짜 (DD-MM-YYYY)",
         "inputValidationRegex": "사용자 지정 정규식",
         "inputRegexLabel": "필수 패턴 (정규식)",
         "inputValidationHelp": "유효한 답변을 받을 때까지 잘못된 답변에는 같은 질문을 다시 보냅니다.",

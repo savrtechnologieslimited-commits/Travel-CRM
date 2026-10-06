@@ -24,6 +24,7 @@ const rateSnapshotStore: RateSnapshotStore = {
       .from("currency_rate_snapshots")
       .select("rates,provider_updated_at,refreshed_at")
       .eq("base_currency", "INR")
+      .abortSignal(AbortSignal.timeout(2000))
       .maybeSingle();
     if (error) throw error;
     if (!data) return null;
@@ -37,7 +38,7 @@ const rateSnapshotStore: RateSnapshotStore = {
       rates: snapshot.rates.rates as Json,
       provider_updated_at: snapshot.rates.updatedAt,
       refreshed_at: snapshot.refreshedAt,
-    });
+    }).abortSignal(AbortSignal.timeout(2000));
     if (error) throw error;
   },
 };

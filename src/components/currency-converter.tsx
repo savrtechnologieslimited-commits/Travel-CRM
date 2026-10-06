@@ -30,6 +30,7 @@ import {
 import {
   convertCurrency,
   convertToInr,
+  fetchFallbackInrExchangeRates,
   formatCurrencyAmount,
   getLiveInrExchangeRatesFn,
   POPULAR_CURRENCIES,
@@ -38,6 +39,8 @@ import {
 } from "@/lib/currency-converter";
 
 const RATE_REFRESH_MS = 30 * 60 * 1000;
+const SERVER_RATE_TIMEOUT_MS = 3500;
+const RATE_REQUEST_TIMEOUT_MS = 15_000;
 const RATE_CACHE_KEY = "savr-currency-rates";
 
 type CurrencyContextValue = {
@@ -115,8 +118,36 @@ export function CurrencyRatesProvider({ children }: { children: ReactNode }) {
       setLoading(false);
     }
     const refresh = async () => {
+      let timeoutId: number | undefined;
       try {
-        const latest = await fetchRatesRef.current();
+        const latest = await Promise.race([
+          (async () => {
+            let serverRates: InrExchangeRates | null = null;
+            let serverTimeoutId: number | undefined;
+            try {
+              serverRates = await Promise.race([
+                fetchRatesRef.current(),
+                new Promise<null>((resolve) => {
+                  serverTimeoutId = window.setTimeout(() => resolve(null), SERVER_RATE_TIMEOUT_MS);
+                }),
+              ]);
+              if (!serverRates) {
+                console.warn("[Currency converter] Server rates timed out; using the direct rate provider.");
+              }
+            } catch (cause) {
+              console.warn("[Currency converter] Server rates failed; using the direct rate provider.", cause);
+            } finally {
+              if (serverTimeoutId !== undefined) window.clearTimeout(serverTimeoutId);
+            }
+            return serverRates ?? fetchFallbackInrExchangeRates();
+          })(),
+          new Promise<never>((_, reject) => {
+            timeoutId = window.setTimeout(
+              () => reject(new Error("Currency rates are taking too long to load. Please try again.")),
+              RATE_REQUEST_TIMEOUT_MS,
+            );
+          }),
+        ]);
         if (!disposed) {
           writeCachedRates(latest);
           setRates(latest);
@@ -129,6 +160,8 @@ export function CurrencyRatesProvider({ children }: { children: ReactNode }) {
           setError(cause instanceof Error ? cause.message : "Live currency rates are unavailable.");
           setLoading(false);
         }
+      } finally {
+        if (timeoutId !== undefined) window.clearTimeout(timeoutId);
       }
     };
     void refresh();

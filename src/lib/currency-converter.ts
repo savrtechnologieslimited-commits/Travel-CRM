@@ -33,6 +33,41 @@ export function formatCurrencyAmount(amount: number, currency: CurrencyCode, loc
   }
 }
 
+export async function fetchFallbackInrExchangeRates(fetcher: typeof fetch = fetch): Promise<InrExchangeRates> {
+  const response = await fetcher("https://open.er-api.com/v6/latest/INR", {
+    headers: { Accept: "application/json" },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!response.ok) throw new Error("Live currency rates are temporarily unavailable.");
+
+  const payload = (await response.json()) as {
+    result?: string;
+    time_last_update_utc?: string;
+    rates?: Record<string, unknown>;
+  };
+  if (payload.result !== "success" || !payload.rates) {
+    throw new Error("The exchange-rate provider returned invalid data.");
+  }
+
+  const rates: Partial<Record<CurrencyCode, number>> = { INR: 1 };
+  for (const currency of POPULAR_CURRENCIES) {
+    if (currency === "INR") continue;
+    const rate = payload.rates[currency];
+    if (typeof rate === "number" && Number.isFinite(rate) && rate > 0) rates[currency] = rate;
+  }
+  if (POPULAR_CURRENCIES.some((currency) => !rates[currency])) {
+    throw new Error("Live rates are missing one or more supported currencies.");
+  }
+
+  const providerUpdatedAt =
+    typeof payload.time_last_update_utc === "string" ? new Date(payload.time_last_update_utc) : null;
+  const updatedAt =
+    providerUpdatedAt && Number.isFinite(providerUpdatedAt.getTime())
+      ? providerUpdatedAt.toISOString()
+      : new Date().toISOString();
+  return { base: "INR", rates, updatedAt, source: "live" };
+}
+
 export const getLiveInrExchangeRatesFn = createServerFn({ method: "GET" }).handler(async () => {
   const { getLiveInrExchangeRates } = await import("./currency-converter.server");
   return getLiveInrExchangeRates();

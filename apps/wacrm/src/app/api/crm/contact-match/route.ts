@@ -8,6 +8,7 @@ import {
 } from '@/lib/auth/bridge-token';
 import { consumeBridgeNonce } from '@/lib/auth/consume-bridge-nonce';
 import { resolveCrmContactMatch } from '@/lib/contacts/crm-contact-match';
+import { createClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,7 +56,7 @@ export async function POST(request: NextRequest) {
     claims = verifyWacrmBridgeToken(
       token,
       process.env.WACRM_BRIDGE_SECRET ?? '',
-      request.headers.get('origin'),
+      request.headers.get('x-crm-origin') ?? request.headers.get('origin'),
       new URL(request.url).origin
     );
   } catch (error) {
@@ -75,6 +76,18 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = supabaseAdmin();
+  const sessionClient = await createClient();
+  const {
+    data: { user: activeWacrmUser },
+    error: sessionError,
+  } = await sessionClient.auth.getUser();
+  const requiresActiveWacrmSession = request.headers.has('x-crm-origin');
+  if (requiresActiveWacrmSession && (sessionError || !activeWacrmUser)) {
+    return matchError(
+      'Sign in to the WACRM account that contains this conversation, then retry.',
+      401
+    );
+  }
   const nonceResult = await consumeBridgeNonce(
     admin,
     claims.nonce,
@@ -94,11 +107,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const { data: profile, error: profileError } = await admin
+  let profileQuery = admin
     .from('profiles')
     .select('user_id, account_id')
-    .eq('email', claims.email)
-    .maybeSingle();
+    .eq('email', claims.email);
+  if (activeWacrmUser) {
+    profileQuery = admin
+      .from('profiles')
+      .select('user_id, account_id')
+      .eq('user_id', activeWacrmUser.id);
+  }
+  const { data: profile, error: profileError } =
+    await profileQuery.maybeSingle();
   if (profileError) {
     console.error(
       '[POST /api/crm/contact-match] failed to resolve WACRM account:',
@@ -114,17 +134,17 @@ export async function POST(request: NextRequest) {
   const email = record.email?.trim().toLowerCase() ?? '';
   const phones = [...new Set(record.phones)];
   const [emailResult, phoneResult] = await Promise.all([
-    email
+    !activeWacrmUser && email
       ? admin
           .from('contacts')
-          .select('id')
+          .select('id,name,phone')
           .eq('account_id', profile.account_id)
           .eq('email_normalized', email)
       : Promise.resolve({ data: [], error: null }),
     phones.length
       ? admin
           .from('contacts')
-          .select('id')
+          .select('id,name,phone')
           .eq('account_id', profile.account_id)
           .in('phone_normalized', phones)
       : Promise.resolve({ data: [], error: null }),
@@ -137,13 +157,41 @@ export async function POST(request: NextRequest) {
     return matchError('WACRM could not complete contact matching.', 500);
   }
 
+  const emailContacts = emailResult.data ?? [];
+  const phoneContacts = phoneResult.data ?? [];
+  const candidates = new Map(
+    [...emailContacts, ...phoneContacts].map((contact) => [contact.id, contact])
+  );
+  const candidateIds = [...candidates.keys()];
+  const { data: conversations, error: conversationsError } = candidateIds.length
+    ? await admin
+        .from('conversations')
+        .select('id,contact_id,status,last_message_at')
+        .eq('account_id', profile.account_id)
+        .in('contact_id', candidateIds)
+        .order('last_message_at', { ascending: false, nullsFirst: false })
+    : { data: [], error: null };
+  if (conversationsError) {
+    console.error(
+      '[POST /api/crm/contact-match] failed to look up matching conversations:',
+      conversationsError
+    );
+    return matchError('WACRM could not complete contact matching.', 500);
+  }
+
   return NextResponse.json(
     {
       userId: profile.user_id,
       ...resolveCrmContactMatch(
-        (emailResult.data ?? []).map((contact) => contact.id),
-        (phoneResult.data ?? []).map((contact) => contact.id)
+        emailContacts.map((contact) => contact.id),
+        phoneContacts.map((contact) => contact.id)
       ),
+      candidates: [...candidates.values()].map((contact) => ({
+        ...contact,
+        conversations: (conversations ?? []).filter(
+          (conversation) => conversation.contact_id === contact.id
+        ),
+      })),
     },
     { headers: { 'Cache-Control': 'no-store' } }
   );

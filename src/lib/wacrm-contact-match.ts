@@ -192,6 +192,91 @@ export const matchWacrmContactFn = createServerFn({ method: "POST" })
     } satisfies WacrmContactMatchStatus;
   });
 
+export const createWacrmContactMatchHandoffFn = createServerFn({ method: "POST" })
+  .inputValidator(inputSchema)
+  .middleware([requireSupabaseAuth])
+  .handler(async ({ context, data }) => {
+    const request = getRequest();
+    const authorization = request.headers.get("authorization");
+    const accessToken = authorization?.startsWith("Bearer ")
+      ? authorization.slice("Bearer ".length)
+      : "";
+    if (!accessToken) throw new Error("CRM authentication is required.");
+
+    const {
+      data: { user },
+      error: authError,
+    } = await context.supabase.auth.getUser(accessToken);
+    if (authError || !user?.email || !user.email_confirmed_at) {
+      throw new Error("A verified CRM sign-in is required to match WACRM contacts.");
+    }
+
+    const { data: record, error: recordError } =
+      data.recordType === "lead"
+        ? await context.supabase
+            .from("leads")
+            .select("email,mobile,whatsapp")
+            .eq("id", data.recordId)
+            .is("deleted_at", null)
+            .maybeSingle()
+        : await context.supabase
+            .from("customers")
+            .select("email,mobile,whatsapp")
+            .eq("id", data.recordId)
+            .is("deleted_at", null)
+            .maybeSingle();
+    if (recordError) {
+      console.error("[createWacrmContactMatchHandoffFn] CRM record lookup failed:", recordError);
+      throw new Error("The CRM record could not be checked for a WACRM contact.");
+    }
+    if (!record) throw new Error("The CRM record is unavailable.");
+
+    const email = record.email?.trim().toLowerCase() ?? "";
+    const normalizedEmail =
+      email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+    const phones = [
+      ...new Set(
+        [record.mobile, record.whatsapp]
+          .map((phone) => phone?.replace(/\D/g, "") ?? "")
+          .filter((phone) => /^\d{7,15}$/.test(phone)),
+      ),
+    ];
+    if (phones.length === 0) {
+      throw new Error("This CRM record does not have a valid phone number to match.");
+    }
+
+    const origin = resolveRequestOrigin(request);
+    if (!origin || !isHttpOrigin(origin)) {
+      throw new Error("The CRM origin could not be verified.");
+    }
+    const wacrmAppUrl = resolveWacrmAppUrl(
+      import.meta.env["VITE_WACRM_APP_URL"],
+      import.meta.env.DEV,
+    );
+    if (!wacrmAppUrl) throw new Error("The WACRM app URL is not configured.");
+
+    const metadataName = user.user_metadata?.["full_name"];
+    const fullName = typeof metadataName === "string" ? metadataName.trim().slice(0, 120) : "";
+    const { createWacrmContactMatchToken } = await import("./wacrm-bridge.server");
+    const token = createWacrmContactMatchToken({
+      crmUserId: user.id,
+      email: user.email.toLowerCase(),
+      fullName,
+      issuer: origin,
+      audience: wacrmAppUrl.origin,
+      record: {
+        type: data.recordType,
+        id: data.recordId,
+        email: normalizedEmail,
+        phones,
+      },
+    });
+    const target = new URL("/crm/contact-match", wacrmAppUrl);
+    target.searchParams.set("token", token);
+    target.searchParams.set("issuer", origin);
+    return { url: target.toString() };
+  });
+
 function isHttpOrigin(value: string): boolean {
   try {
     const url = new URL(value);

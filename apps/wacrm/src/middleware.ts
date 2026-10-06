@@ -92,6 +92,7 @@ export async function middleware(request: NextRequest) {
     '/agents',
     '/notifications',
     '/settings',
+    '/crm/contact-match',
   ];
   if (
     !user &&

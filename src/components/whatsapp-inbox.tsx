@@ -325,8 +325,10 @@ type Conversation =
 export function WhatsAppChatDialog({
   trigger,
   context,
+  initialMessage,
 }: {
   trigger?: React.ReactNode;
+  initialMessage?: string;
   context: {
     leadId?: string | null;
     enquiryId?: string | null;
@@ -374,7 +376,11 @@ export function WhatsAppChatDialog({
             <p>The CRM will re-use the existing thread instead of creating a duplicate.</p>
           </div>
         ) : (
-          <ConversationPanel conversation={active as Conversation} context={context} />
+          <ConversationPanel
+            conversation={active as Conversation}
+            context={context}
+            initialMessage={initialMessage}
+          />
         )}
       </DialogContent>
     </Dialog>
@@ -385,9 +391,11 @@ function ConversationPanel({
   conversation,
   context,
   onBack,
+  initialMessage,
 }: {
   conversation: Conversation;
   onBack?: () => void;
+  initialMessage?: string;
   context?: {
     customerName?: string | null;
     destination?: string | null;
@@ -427,7 +435,7 @@ function ConversationPanel({
     [conversation],
   );
 
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialMessage ?? "");
   const [replyMessageId, setReplyMessageId] = useState<string | null>(null);
   const [activeMediaId, setActiveMediaId] = useState<string | null>(null);
   const [touchMessageActions, setTouchMessageActions] = useState<string | null>(null);
@@ -519,6 +527,10 @@ function ConversationPanel({
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ block: "end", behavior: "smooth" });
   }, [messages]);
+
+  useEffect(() => {
+    if (initialMessage) setDraft(initialMessage);
+  }, [initialMessage]);
 
   useEffect(() => {
     void supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id ?? null));

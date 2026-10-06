@@ -28,6 +28,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { NewCustomerDialog } from "@/components/entity-dialogs";
 import { CustomerDeleteButton } from "@/components/customer-delete-button";
 import { WacrmContactMatchLink } from "@/components/wacrm-contact-match-link";
+import { WhatsAppChatDialog } from "@/components/whatsapp-inbox";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -65,19 +66,45 @@ function AssignedItineraryCard({
   itinerary,
   index,
   customerId,
+  customerName,
+  phoneNumber,
   onDeleted,
 }: {
   itinerary: CustomerItinerary;
   index: number;
   customerId: string;
+  customerName: string;
+  phoneNumber: string | null;
   onDeleted: () => Promise<void>;
 }) {
   const createShare = useServerFn(createItineraryShareFn);
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [sharing, setSharing] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const title = itinerary.title ?? itinerary.name ?? "Untitled itinerary";
+
+  async function openPreview() {
+    const previewWindow = window.open("about:blank", "_blank");
+    if (!previewWindow) {
+      toast.error("Allow pop-ups to open the itinerary preview.");
+      return;
+    }
+    setPreviewing(true);
+    try {
+      const result = await createShare({ data: { itineraryId: itinerary.id, expiresInDays: 30 } });
+      previewWindow.location.href = buildPublicItineraryShareUrl(
+        window.location.origin,
+        result.token,
+      );
+    } catch (error) {
+      previewWindow.close();
+      toast.error(error instanceof Error ? error.message : "Unable to open itinerary preview.");
+    } finally {
+      setPreviewing(false);
+    }
+  }
 
   async function shareItinerary() {
     setSharing(true);
@@ -160,11 +187,15 @@ function AssignedItineraryCard({
           <StatusBadge status={itinerary.status} />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button type="button" size="sm" variant="outline" asChild>
-            <Link to="/itinerary-builder" search={{ itineraryId: itinerary.id, preview: "1" }}>
-              <Eye className="mr-1.5 size-4" />
-              Preview
-            </Link>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void openPreview()}
+            disabled={previewing}
+          >
+            <Eye className="mr-1.5 size-4" />
+            {previewing ? "Opening…" : "Preview"}
           </Button>
           <Button type="button" size="sm" variant="outline" asChild>
             <Link to="/itinerary-builder" search={{ itineraryId: itinerary.id }}>
@@ -210,6 +241,23 @@ function AssignedItineraryCard({
             className="h-10 w-full rounded-md border border-slate-200 bg-slate-50 px-3 text-sm"
           />
           <DialogFooter>
+            {shareUrl && (
+              <WhatsAppChatDialog
+                context={{
+                  customerId,
+                  phoneNumber,
+                  customerName,
+                  destination: itinerary.destinations?.name,
+                }}
+                initialMessage={`Hi ${customerName}, here is your itinerary preview: ${shareUrl}`}
+                trigger={
+                  <Button type="button" variant="outline">
+                    <MessageSquareText className="mr-1.5 size-4" />
+                    WhatsApp
+                  </Button>
+                }
+              />
+            )}
             <Button type="button" variant="outline" onClick={() => setShareDialogOpen(false)}>
               Close
             </Button>
@@ -1353,6 +1401,8 @@ function CustomerDetailPage() {
                   itinerary={itinerary}
                   index={index}
                   customerId={customer.id}
+                  customerName={customer.full_name}
+                  phoneNumber={customer.whatsapp ?? customer.mobile}
                   onDeleted={() =>
                     queryClient.invalidateQueries({ queryKey: ["customer", customerId] })
                   }

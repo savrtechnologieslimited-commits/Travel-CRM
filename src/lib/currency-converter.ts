@@ -8,6 +8,7 @@ export type InrExchangeRates = {
   base: "INR";
   rates: Partial<Record<CurrencyCode, number>>;
   updatedAt: string;
+  source?: "shared-cache" | "live";
 };
 
 export function convertCurrency(amount: number, from: CurrencyCode, to: CurrencyCode, rates?: InrExchangeRates["rates"]): number | null {
@@ -36,4 +37,3 @@ export const getLiveInrExchangeRatesFn = createServerFn({ method: "GET" }).handl
   const { getLiveInrExchangeRates } = await import("./currency-converter.server");
   return getLiveInrExchangeRates();
 });
-

@@ -4808,9 +4808,14 @@ function ItineraryBuilderPage() {
     });
     const uniqueLines = new Map<string, ItineraryCostLine>();
     for (const line of [...normalizedCostLines, ...derivedLines]) {
-      const identity = line.itinerary_item_id
-        ? `${line.cost_category}|item:${line.itinerary_item_id}`
-        : `${line.cost_category}|description:${normalizedDescription(line.description)}|amount:${line.total_cost}`;
+      let identity: string;
+      if (line.itinerary_item_id) {
+        identity = `${line.cost_category}|item:${line.itinerary_item_id}`;
+      } else if (line.source_reference === "land-package-extra" && line.id) {
+        identity = `${line.cost_category}|land-package-extra:${line.id}`;
+      } else {
+        identity = `${line.cost_category}|description:${normalizedDescription(line.description)}|amount:${line.total_cost}`;
+      }
       if (!uniqueLines.has(identity) || line.source !== "derived") uniqueLines.set(identity, line);
     }
     return [...uniqueLines.values()];
@@ -8372,6 +8377,25 @@ function ItineraryBuilderPage() {
     ]);
   }
 
+  function addLandPackageExtraCost() {
+    setCostLines((current) => [
+      ...current,
+      createItineraryCostLine({
+        id: crypto.randomUUID(),
+        itinerary_id: currentItineraryId ?? "00000000-0000-0000-0000-000000000000",
+        cost_category: "OTHER",
+        description: "Additional cost",
+        quantity: 1,
+        unit: "service",
+        unit_cost: 0,
+        currency: "INR",
+        sequence: current.length + 1,
+        source: "manual",
+        source_reference: "land-package-extra",
+      }),
+    ]);
+  }
+
   function saveTransportCost(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const title = transportCostForm.title.trim();
@@ -11121,6 +11145,68 @@ function ItineraryBuilderPage() {
                   Customer price is included in the itinerary PDF and share link.
                 </p>
               )}
+              <section className="space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">Additional costs</p>
+                    <p className="text-xs text-slate-500">
+                      Add named costs in INR; they are included in supplier totals.
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={addLandPackageExtraCost}
+                  >
+                    + Add another cost
+                  </Button>
+                </div>
+                {landPackageLines
+                  .filter((line) => line.source_reference === "land-package-extra")
+                  .map((line) => (
+                    <div
+                      key={line.id}
+                      className="grid grid-cols-[minmax(0,1fr)_110px_32px] items-center gap-2"
+                    >
+                      <Input
+                        value={line.description}
+                        onChange={(event) =>
+                          updateCostLineById(line.id ?? "", { description: event.target.value })
+                        }
+                        aria-label="Additional cost name"
+                        placeholder="Cost name"
+                        className="h-9 bg-white text-sm"
+                      />
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={line.total_cost}
+                        onChange={(event) => {
+                          const amount = Number(event.target.value) || 0;
+                          updateCostLineById(line.id ?? "", {
+                            unit_cost: amount,
+                            unit_cost_inr: amount,
+                            total_cost_inr: amount,
+                          });
+                        }}
+                        aria-label={`${line.description} amount in INR`}
+                        placeholder="Amount"
+                        className="h-9 bg-white text-sm"
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => deleteCostLineById(line.id)}
+                        aria-label={`Remove ${line.description}`}
+                      >
+                        ×
+                      </Button>
+                    </div>
+                  ))}
+              </section>
               <div className="space-y-2">
                 {[
                   {

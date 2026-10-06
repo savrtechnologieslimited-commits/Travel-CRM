@@ -67,6 +67,27 @@ export type Database = {
         };
         Relationships: [];
       };
+      currency_rate_snapshots: {
+        Row: {
+          base_currency: string;
+          provider_updated_at: string;
+          rates: Json;
+          refreshed_at: string;
+        };
+        Insert: {
+          base_currency?: string;
+          provider_updated_at: string;
+          rates: Json;
+          refreshed_at?: string;
+        };
+        Update: {
+          base_currency?: string;
+          provider_updated_at?: string;
+          rates?: Json;
+          refreshed_at?: string;
+        };
+        Relationships: [];
+      };
       crm_tenants: {
         Row: {
           created_at: string;

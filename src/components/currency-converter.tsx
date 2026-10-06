@@ -120,7 +120,7 @@ export function CurrencyRatesProvider({ children }: { children: ReactNode }) {
         if (!disposed) {
           writeCachedRates(latest);
           setRates(latest);
-          setCached(false);
+          setCached(latest.source === "shared-cache");
           setError(null);
           setLoading(false);
         }

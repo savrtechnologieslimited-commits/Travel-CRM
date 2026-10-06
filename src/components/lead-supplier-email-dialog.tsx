@@ -27,6 +27,7 @@ import { formatDate } from "@/lib/crm";
 import { supabase } from "@/integrations/supabase/client";
 import { getConnectedMailAccounts, sendSupplierInquiryEmail } from "@/lib/gmail-provider";
 import {
+  appendSupplierEmailSignature,
   readSupplierEmailTemplate,
   renderSupplierEmailTemplate,
   type SupplierEmailTemplate,
@@ -50,7 +51,7 @@ function renderEmailForSupplier(
   profiles: { id: string; full_name: string }[],
   template: SupplierEmailTemplate,
 ) {
-  return renderSupplierEmailTemplate(template, {
+  const rendered = renderSupplierEmailTemplate(template, {
     supplier_name: supplier?.name ?? "",
     contact_name: supplier?.contact_person ?? "",
     client_name: lead.customer_name?.trim() || "Not specified",
@@ -64,6 +65,10 @@ function renderEmailForSupplier(
     trip_end_date: formatDate(lead.travel_end),
     client_requirement: lead.special_requirements?.trim() || "No additional requirements recorded.",
   });
+  return {
+    ...rendered,
+    body: appendSupplierEmailSignature(rendered.body, rendered.signature),
+  };
 }
 
 export function LeadSupplierEmailDialog({ lead }: { lead: LeadSupplierEmailDetails }) {

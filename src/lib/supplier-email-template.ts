@@ -1,7 +1,14 @@
 export type SupplierEmailTemplate = {
   subject: string;
   body: string;
+  signature: string;
 };
+
+export const DEFAULT_SUPPLIER_EMAIL_SIGNATURE = [
+  "Best regards,",
+  "{{assigned_team_member}}",
+  "SAVR Travels",
+].join("\n");
 
 export const DEFAULT_SUPPLIER_EMAIL_TEMPLATE: SupplierEmailTemplate = {
   subject: "Enquiry for {{client_name}} — {{destination}}",
@@ -21,11 +28,8 @@ export const DEFAULT_SUPPLIER_EMAIL_TEMPLATE: SupplierEmailTemplate = {
     "",
     "Requirements:",
     "{{client_requirement}}",
-    "",
-    "Best regards,",
-    "{{assigned_team_member}}",
-    "SAVR Travels",
   ].join("\n"),
+  signature: DEFAULT_SUPPLIER_EMAIL_SIGNATURE,
 };
 
 export const SUPPLIER_EMAIL_PLACEHOLDERS = [
@@ -48,12 +52,23 @@ export function readSupplierEmailTemplate(value: unknown): SupplierEmailTemplate
     return DEFAULT_SUPPLIER_EMAIL_TEMPLATE;
   }
   const template = value as Partial<Record<keyof SupplierEmailTemplate, unknown>>;
+  const body =
+    typeof template.body === "string" ? template.body : DEFAULT_SUPPLIER_EMAIL_TEMPLATE.body;
+  const hasSignature = typeof template.signature === "string";
+  const legacySignature = `\n\n${DEFAULT_SUPPLIER_EMAIL_SIGNATURE}`;
   return {
     subject:
       typeof template.subject === "string"
         ? template.subject
         : DEFAULT_SUPPLIER_EMAIL_TEMPLATE.subject,
-    body: typeof template.body === "string" ? template.body : DEFAULT_SUPPLIER_EMAIL_TEMPLATE.body,
+    body:
+      !hasSignature && body.endsWith(legacySignature)
+        ? body.slice(0, -legacySignature.length)
+        : body,
+    signature:
+      typeof template.signature === "string"
+        ? template.signature
+        : DEFAULT_SUPPLIER_EMAIL_SIGNATURE,
   };
 }
 
@@ -65,5 +80,16 @@ export function renderSupplierEmailTemplate(
     text.replace(/\{\{([a-z_]+)\}\}/g, (placeholder, name: string) =>
       name in values ? values[name as SupplierEmailPlaceholder] : placeholder,
     );
-  return { subject: render(template.subject), body: render(template.body) };
+  return {
+    subject: render(template.subject),
+    body: render(template.body),
+    signature: render(template.signature),
+  };
+}
+
+export function appendSupplierEmailSignature(body: string, signature: string): string {
+  const trimmedSignature = signature.trim();
+  if (!trimmedSignature) return body;
+  const trimmedBody = body.trimEnd();
+  return trimmedBody ? `${trimmedBody}\n\n${trimmedSignature}` : trimmedSignature;
 }

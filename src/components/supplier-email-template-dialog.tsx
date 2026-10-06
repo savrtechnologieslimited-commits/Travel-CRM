@@ -27,6 +27,7 @@ export function SupplierEmailTemplateDialog() {
   const [template, setTemplate] = useState(DEFAULT_SUPPLIER_EMAIL_TEMPLATE);
   const subjectRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
+  const signatureRef = useRef<HTMLTextAreaElement>(null);
   const { data: settings = [] } = useAppSettings();
   const saveSetting = useSaveAppSetting();
   const templateSetting = settings.find(
@@ -42,7 +43,7 @@ export function SupplierEmailTemplateDialog() {
   }, [open, savedTemplate]);
 
   function insertPlaceholder(field: EditableField, token: string) {
-    const ref = field === "subject" ? subjectRef : bodyRef;
+    const ref = field === "subject" ? subjectRef : field === "body" ? bodyRef : signatureRef;
     const input = ref.current;
     const placeholder = `{{${token}}}`;
     if (!input) {
@@ -69,7 +70,11 @@ export function SupplierEmailTemplateDialog() {
     saveSetting.mutate(
       {
         key: "supplier_email_template",
-        value: { subject: template.subject, body: template.body },
+        value: {
+          subject: template.subject,
+          body: template.body,
+          signature: template.signature,
+        },
       },
       { onSuccess: () => setOpen(false) },
     );
@@ -151,6 +156,40 @@ export function SupplierEmailTemplateDialog() {
               value={template.body}
               onChange={(event) =>
                 setTemplate((current) => ({ ...current, body: event.target.value }))
+              }
+            />
+          </div>
+
+          <div className="space-y-2 border-t pt-4">
+            <div>
+              <Label htmlFor="supplier-template-signature">Email signature</Label>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Added to the bottom of every supplier email. Edit it here, or leave it empty to send
+                without a signature.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {SUPPLIER_EMAIL_PLACEHOLDERS.map(({ label, token }) => (
+                <Button
+                  key={`signature-${token}`}
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-7 rounded-full px-3 text-xs font-normal"
+                  onClick={() => insertPlaceholder("signature", token)}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
+            <Textarea
+              id="supplier-template-signature"
+              ref={signatureRef}
+              rows={5}
+              className="font-mono text-sm"
+              value={template.signature}
+              onChange={(event) =>
+                setTemplate((current) => ({ ...current, signature: event.target.value }))
               }
             />
           </div>

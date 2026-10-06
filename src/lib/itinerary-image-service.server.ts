@@ -62,7 +62,7 @@ const IMAGE_STORAGE_BUCKET = "itineraries";
 const IMAGE_STORAGE_PREFIX = "itinerary-place-images/cache";
 const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const PLACE_SEARCH_FIELD_MASK = "places.id,places.displayName,places.formattedAddress,places.photos.name,places.photos.authorAttributions";
-const ATTRACTION_SUFFIX = "Temple|Green|Fort|Museum|Palace|Park|Falls|Waterfall|Lake|Beach|Garden|Sanctuary|Monastery|Church|Mosque|Tower|Bridge|Cave|Viewpoint|Plantation|Factory|Reserve|Zoo|Market|Square|Cathedral|Shrine|Peak|Rock|Gorge|River|Hill|Village";
+const ATTRACTION_SUFFIX = "Temple|Green|Fort|Museum|Palace|Park|Falls|Waterfall|Lake|Beach|Garden|Sanctuary|Monastery|Church|Mosque|Tower|Bridge|Cave|Viewpoint|Plantation|Factory|Reserve|Zoo|Market|Square|Cathedral|Shrine|Peak|Rock|Gorge|River|Hill|Village|Volcano(?:es)?|Centre|Center|Resort";
 
 export class GoogleItineraryImageError extends Error {
   constructor(message: string, readonly status?: number) {
@@ -123,6 +123,26 @@ export function getItineraryDayPlaceCandidates(
     const itemTitle = cleanText(item.title);
     if (itemTitle && !isGenericPlaceLabel(itemTitle)) addCandidate(candidates, itemTitle, itemLocation || locality);
     if (itemLocation && itemTitle && isGenericPlaceLabel(itemTitle)) addCandidate(candidates, itemLocation, locality);
+  }
+
+  const normalizedDayTitle = cleanText(day.title).replace(/^day\s*\d+\s*[:.\-–—)]\s*/i, "");
+  const titleNamesPlace = new RegExp(
+    `(?:\\s+(?:city\\s+)?(?:tour|excursion|safari)|\\s+(?:${ATTRACTION_SUFFIX}))$`,
+    "i",
+  ).test(normalizedDayTitle);
+  const titleParts = /(?:\s+&\s+|\s+and\s+|[,;|])/i.test(normalizedDayTitle)
+    ? normalizedDayTitle.split(/\s+(?:&|and)\s+|[,;|]+/i)
+    : titleNamesPlace
+      ? [normalizedDayTitle.replace(/\s+(?:city\s+)?(?:tour|excursion|safari)$/i, "")]
+      : [];
+  for (const titlePart of titleParts) {
+    const placeName = titlePart
+      .trim()
+      .replace(/^(?:(?:arrival|departure|tour|excursion)\s+(?:in|to|from|through)\s+)+/i, "")
+      .trim();
+    if (placeName && normalizeItineraryImageQuery(placeName) !== normalizeItineraryImageQuery(locality)) {
+      addCandidate(candidates, placeName, locality);
+    }
   }
 
   const sourceText = [cleanText(day.title), cleanText(day.description), ...items

@@ -58,6 +58,26 @@ describe("itinerary image service", () => {
     )).toEqual([{ place: "Ella", locality: "Sri Lanka" }]);
   });
 
+  test("searches named places in day titles that are not structured activity items", () => {
+    const gobustan = getItineraryDayPlaceCandidates(
+      {
+        title: "Day 3 – Gobustan & Mud Volcanoes",
+        description: "Tour the mud volcanoes and Gobustan.",
+      },
+      [],
+      "Baku",
+    );
+    const shahdag = getItineraryDayPlaceCandidates(
+      { title: "Day 5 – Shahdag Tour", description: "Cable car ride at Shahdag." },
+      [],
+      "Baku",
+    );
+
+    expect(gobustan.map((candidate) => candidate.place)).toContain("Gobustan");
+    expect(gobustan.map((candidate) => candidate.place)).toContain("Mud Volcanoes");
+    expect(shahdag.map((candidate) => candidate.place)).toContain("Shahdag");
+  });
+
   test("uses Places API search and photo media with the server key in a header only", async () => {
     const requests: Array<{ url: string; key: string | null; body: string }> = [];
     const fetcher: typeof fetch = async (input, init) => {

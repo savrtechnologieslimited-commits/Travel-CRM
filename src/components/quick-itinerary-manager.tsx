@@ -62,6 +62,7 @@ export function QuickItineraryManager() {
   const [dragging, setDragging] = useState(false);
   const serverFunctions = useRef({ extractText, extractItinerary, addImages });
   serverFunctions.current = { extractText, extractItinerary, addImages };
+  const cancelPreparationRef = useRef<(() => void) | null>(null);
   const dragOrigin = useRef<{
     pointerX: number;
     pointerY: number;
@@ -105,6 +106,10 @@ export function QuickItineraryManager() {
   useEffect(() => {
     if (!request) return;
     let cancelled = false;
+    const cancel = () => {
+      cancelled = true;
+    };
+    cancelPreparationRef.current = cancel;
     async function prepareItinerary() {
       try {
         let sourceText = request?.sourceText?.trim() ?? "";
@@ -237,6 +242,7 @@ export function QuickItineraryManager() {
     void prepareItinerary();
     return () => {
       cancelled = true;
+      if (cancelPreparationRef.current === cancel) cancelPreparationRef.current = null;
     };
   }, [queryClient, request]);
 
@@ -292,6 +298,20 @@ export function QuickItineraryManager() {
     setImageMessage("");
   }
 
+  function closePreview() {
+    setPreviewOpen(false);
+    setPhase("complete");
+    setMinimized(false);
+    void queryClient.invalidateQueries({ queryKey: ["itinerary-drafts"] });
+  }
+
+  function cancelPreparation() {
+    cancelPreparationRef.current?.();
+    cancelPreparationRef.current = null;
+    dismiss();
+    toast.info("Itinerary preparation cancelled.");
+  }
+
   if (!phase) return null;
   const phaseDetails = PHASE_DETAILS[phase];
   const isComplete = phase === "complete";
@@ -321,17 +341,32 @@ export function QuickItineraryManager() {
               <Move className="size-4 shrink-0 text-slate-300" />
               <span className="truncate text-sm font-semibold">Quick itinerary preparation</span>
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label={minimized ? "Expand progress" : "Minimize progress"}
-              title={minimized ? "Expand" : "Minimize"}
-              className="size-7 shrink-0 text-white hover:bg-white/15 hover:text-white"
-              onClick={() => setMinimized((value) => !value)}
-            >
-              {minimized ? <Maximize2 className="size-4" /> : <Minus className="size-4" />}
-            </Button>
+            <div className="flex shrink-0 items-center gap-1">
+              {!isComplete && !isError && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Cancel itinerary preparation"
+                  title="Cancel preparation"
+                  className="size-7 text-white hover:bg-white/15 hover:text-white"
+                  onClick={cancelPreparation}
+                >
+                  <X className="size-4" />
+                </Button>
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label={minimized ? "Expand progress" : "Minimize progress"}
+                title={minimized ? "Expand" : "Minimize"}
+                className="size-7 text-white hover:bg-white/15 hover:text-white"
+                onClick={() => setMinimized((value) => !value)}
+              >
+                {minimized ? <Maximize2 className="size-4" /> : <Minus className="size-4" />}
+              </Button>
+            </div>
           </div>
           {!minimized && (
             <div className="space-y-3 p-4">
@@ -353,6 +388,11 @@ export function QuickItineraryManager() {
               {isError && (
                 <Button type="button" variant="outline" size="sm" onClick={dismiss}>
                   Close
+                </Button>
+              )}
+              {!isComplete && !isError && (
+                <Button type="button" variant="outline" size="sm" onClick={cancelPreparation}>
+                  Cancel preparation
                 </Button>
               )}
               {isComplete && (
@@ -389,7 +429,7 @@ export function QuickItineraryManager() {
       <Dialog
         open={previewOpen}
         onOpenChange={(open) => {
-          if (!open) dismiss();
+          if (!open) closePreview();
         }}
       >
         <DialogContent className="flex h-[92vh] max-h-[94vh] w-[calc(100vw-1rem)] max-w-6xl flex-col gap-0 overflow-hidden p-0">
@@ -401,7 +441,7 @@ export function QuickItineraryManager() {
                 been saved under Drafts, so closing the preview won’t discard it.
               </DialogDescription>
             </DialogHeader>
-            <Button type="button" variant="outline" size="sm" onClick={dismiss}>
+            <Button type="button" variant="outline" size="sm" onClick={closePreview}>
               <X className="size-4" />
               Close
             </Button>
@@ -424,14 +464,7 @@ export function QuickItineraryManager() {
               <Check className="size-4" />
               Preparation complete
             </p>
-            <Button
-              type="button"
-              onClick={() => {
-                setPreviewOpen(false);
-                setPhase("complete");
-                setMinimized(false);
-              }}
-            >
+            <Button type="button" onClick={closePreview}>
               <Eye className="size-4" />
               Minimize preview
             </Button>

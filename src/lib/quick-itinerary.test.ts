@@ -66,6 +66,8 @@ describe("quick itinerary preview", () => {
     );
     expect(draft.form.title).toBe("Baku Tour");
     expect(draft.form.status).toBe("DRAFT");
+    expect(draft.form.document_html).toContain("<h2>Day 1 – Arrival in Baku</h2>");
+    expect(draft.form.document_html).toContain("Baku Marriott Hotel Boulevard");
     expect(draft.days[0]?.items[0]).toMatchObject({
       title: "Baku Marriott Hotel Boulevard",
       item_type: "ACCOMMODATION",

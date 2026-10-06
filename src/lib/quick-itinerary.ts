@@ -1,4 +1,5 @@
 import { buildItineraryPresentation } from "./itinerary-preview";
+import { itineraryTextToSafeHtml } from "./itinerary-ticket-sources";
 import type { SupplierImportResult } from "./ai-supplier-itinerary-import.server";
 
 export const QUICK_ITINERARY_REQUEST_EVENT = "savr:quick-itinerary-request";
@@ -26,6 +27,29 @@ export type QuickItineraryPhoto = {
     photoUri: string | null;
   }>;
 };
+
+function quickItineraryDraftToDocumentText(result: SupplierImportResult) {
+  const textValue = (value: unknown) => (typeof value === "string" ? value.trim() : "");
+  return result.draft.days
+    .map((day, index) =>
+      [
+        `Day ${index + 1} – ${day.title.replace(/^day\s*\d+\s*[:.\-–—)]\s*/i, "").trim()}`,
+        textValue(day.description),
+        ...day.items.flatMap((item) => {
+          const title = textValue(item.title);
+          const details = [item.description, item["customer_facing_info"], item.notes]
+            .map(textValue)
+            .filter(Boolean)
+            .join(" — ");
+          return title || details ? [`• ${[title, details].filter(Boolean).join(": ")}`] : [];
+        }),
+        textValue(day.notes),
+      ]
+        .filter(Boolean)
+        .join("\n"),
+    )
+    .join("\n\n");
+}
 
 export function createQuickItineraryDraftSnapshot(
   result: SupplierImportResult,
@@ -100,7 +124,7 @@ export function createQuickItineraryDraftSnapshot(
       terms_conditions: "",
       custom_tables: result.tables,
       customer_quotes: {},
-      document_html: "",
+      document_html: itineraryTextToSafeHtml(quickItineraryDraftToDocumentText(result)),
       photos: savedPhotos,
       provenance: result.provenance,
     },

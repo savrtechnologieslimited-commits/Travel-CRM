@@ -2,7 +2,6 @@ import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Plus } from "lucide-react";
 import { useSuppliersFull, useUpsertSupplier } from "@/lib/data";
-import { SupplierEmailTemplateDialog } from "@/components/supplier-email-template-dialog";
 import {
   CURRENCIES,
   SUPPLIER_CATEGORIES,
@@ -81,7 +80,6 @@ function SuppliersPage() {
         subtitle="Hotels, DMCs, airlines, transport and visa partners."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <SupplierEmailTemplateDialog />
             <NewSupplierDialog />
           </div>
         }

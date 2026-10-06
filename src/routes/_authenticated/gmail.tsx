@@ -12,6 +12,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { PageHeader } from "@/components/app-shell";
+import { SupplierEmailTemplateDialog } from "@/components/supplier-email-template-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -294,7 +295,8 @@ function GmailInboxPage() {
         title="Mail Accounts"
         subtitle="Connect Gmail or Zoho Mail to send supplier enquiries directly from the CRM. Gmail also provides inbox access."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <SupplierEmailTemplateDialog />
             {!gmailEmail && (
               <Button size="sm" onClick={handleConnect} disabled={connecting}>
                 <Mail className="mr-2 size-4" /> {connecting ? "Connecting..." : "Connect Gmail"}

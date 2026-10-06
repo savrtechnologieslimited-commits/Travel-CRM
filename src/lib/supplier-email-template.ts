@@ -21,6 +21,10 @@ export const DEFAULT_SUPPLIER_EMAIL_TEMPLATE: SupplierEmailTemplate = {
     "",
     "Requirements:",
     "{{client_requirement}}",
+    "",
+    "Best regards,",
+    "{{assigned_team_member}}",
+    "SAVR Travels",
   ].join("\n"),
 };
 

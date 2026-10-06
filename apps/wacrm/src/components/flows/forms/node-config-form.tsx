@@ -225,7 +225,11 @@ export function NodeConfigForm({
         />
       );
 
-    case "collect_input":
+    case "collect_input": {
+      const inputConfig = cfg as {
+        validation?: string;
+        regex?: string;
+      };
       return (
         <>
           <TextRow
@@ -258,6 +262,41 @@ export function NodeConfigForm({
               .
             </p>
           </div>
+          <div>
+            <label className="mb-1 block text-xs text-muted-foreground">
+              {t("inputValidationLabel")}
+            </label>
+            <Select
+              value={inputConfig.validation ?? "auto"}
+              onValueChange={(value) =>
+                onUpdateConfig({
+                  validation: value === "auto" ? undefined : value,
+                })
+              }
+            >
+              <SelectTrigger className="bg-muted">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="auto">{t("inputValidationAuto")}</SelectItem>
+                <SelectItem value="any">{t("inputValidationAny")}</SelectItem>
+                <SelectItem value="email">{t("inputValidationEmail")}</SelectItem>
+                <SelectItem value="phone">{t("inputValidationPhone")}</SelectItem>
+                <SelectItem value="date">{t("inputValidationDate")}</SelectItem>
+                <SelectItem value="regex">{t("inputValidationRegex")}</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="mt-1 text-[10px] text-muted-foreground">
+              {t("inputValidationHelp")}
+            </p>
+          </div>
+          {inputConfig.validation === "regex" && (
+            <TextRow
+              label={t("inputRegexLabel")}
+              value={inputConfig.regex ?? ""}
+              onChange={(value) => onUpdateConfig({ regex: value })}
+            />
+          )}
           <NextNodeRow
             value={(cfg as { next_node_key?: string }).next_node_key ?? ""}
             allNodes={allNodes}
@@ -267,6 +306,7 @@ export function NodeConfigForm({
           />
         </>
       );
+    }
 
     case "condition":
       return (

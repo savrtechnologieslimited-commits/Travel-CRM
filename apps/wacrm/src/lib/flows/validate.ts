@@ -772,6 +772,8 @@ function validateNode(
       const cfg = node.config as {
         prompt_text?: string;
         var_key?: string;
+        validation?: string;
+        regex?: string;
         next_node_key?: string;
       };
       if (!cfg.prompt_text?.trim()) {
@@ -799,6 +801,40 @@ function validateNode(
           field: "var_key",
           message: `var_key "${cfg.var_key}" must be alphanumeric+underscore and start with a letter or underscore.`,
         });
+      }
+      if (
+        cfg.validation !== undefined &&
+        !["any", "email", "phone", "date", "regex"].includes(cfg.validation)
+      ) {
+        issues.push({
+          severity: "error",
+          scope: "node",
+          node_key: node.node_key,
+          field: "validation",
+          message: "Collect-input has an unsupported validation format.",
+        });
+      } else if (cfg.validation === "regex") {
+        if (!cfg.regex?.trim()) {
+          issues.push({
+            severity: "error",
+            scope: "node",
+            node_key: node.node_key,
+            field: "regex",
+            message: "Collect-input regex validation needs a pattern.",
+          });
+        } else {
+          try {
+            new RegExp(cfg.regex);
+          } catch {
+            issues.push({
+              severity: "error",
+              scope: "node",
+              node_key: node.node_key,
+              field: "regex",
+              message: "Collect-input regex pattern is not valid.",
+            });
+          }
+        }
       }
       if (!cfg.next_node_key) {
         issues.push({

@@ -275,7 +275,6 @@ const LEAD_CAPTURE: FlowTemplate = {
       config: {
         prompt_text: "Thanks {{vars.name}}! What's your work email?",
         var_key: "email",
-        validation: "email",
         next_node_key: "ask_company",
       } as CollectInputNodeConfig,
     },
@@ -376,9 +375,8 @@ const TRAVEL_ENQUIRY: FlowTemplate = {
       node_key: "ask_travel_date",
       node_type: "collect_input",
       config: {
-        prompt_text: "What is your planned travel date? Reply in YYYY-MM-DD format, for example: 2026-10-25.",
+        prompt_text: "What is your planned travel date?",
         var_key: "travel_date",
-        validation: "date",
         next_node_key: "ask_adults",
       } as CollectInputNodeConfig,
     },

@@ -170,8 +170,10 @@ export interface HandoffNodeConfig {
  * Captures the customer's next free-text reply into
  * `flow_runs.vars[var_key]`, then advances.
  *
- * Optional format validation keeps invalid replies at this node until
- * the customer provides an acceptable value.
+ * v1.5 ships without runtime validation (`validation` is accepted on
+ * the config for forward compat but ignored by the runner); the
+ * builder still surfaces the field so users can author flows that
+ * v2 will start enforcing.
  */
 export interface CollectInputNodeConfig {
   /** Prompt text sent to the customer before they reply. */
@@ -183,10 +185,10 @@ export interface CollectInputNodeConfig {
    */
   var_key: string;
   /**
-   * When omitted, an explicit YYYY-MM-DD format in the prompt is
-   * enforced automatically; other prompts accept any non-empty text.
+   * Reserved for v2. Accepted on the config but ignored by the v1.5
+   * runner — captures any non-empty text.
    */
-  validation?: "any" | "email" | "phone" | "date" | "regex";
+  validation?: "any" | "email" | "phone" | "regex";
   /** Used only when `validation === 'regex'`. */
   regex?: string;
   /** Node to advance to after capture. */

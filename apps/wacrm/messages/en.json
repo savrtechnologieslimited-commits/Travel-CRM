@@ -1203,7 +1203,7 @@
         "inputValidationAny": "Any non-empty text",
         "inputValidationEmail": "Email address",
         "inputValidationPhone": "Phone number",
-        "inputValidationDate": "Date (DD-MM-YYYY)",
+        "inputValidationDate": "Date (YYYY-MM-DD)",
         "inputValidationRegex": "Custom regular expression",
         "inputRegexLabel": "Required pattern (regular expression)",
         "inputValidationHelp": "Invalid replies repeat this question until a valid answer is received.",

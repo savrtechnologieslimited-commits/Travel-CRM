@@ -1203,7 +1203,7 @@
         "inputValidationAny": "Cualquier texto no vacío",
         "inputValidationEmail": "Correo electrónico",
         "inputValidationPhone": "Número de teléfono",
-        "inputValidationDate": "Fecha (DD-MM-YYYY)",
+        "inputValidationDate": "Fecha (YYYY-MM-DD)",
         "inputValidationRegex": "Expresión regular personalizada",
         "inputRegexLabel": "Patrón requerido (expresión regular)",
         "inputValidationHelp": "Las respuestas no válidas repiten esta pregunta hasta recibir una respuesta válida.",

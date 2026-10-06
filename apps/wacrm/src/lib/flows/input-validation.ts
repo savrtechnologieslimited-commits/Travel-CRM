@@ -22,24 +22,8 @@ export function resolveCollectInputValidation(
 
   // Keep existing flows working: their prompt may already specify a
   // machine-readable format even though validation was not configured.
-  if (/\b(?:dd-mm-yyyy|yyyy-mm-dd)\b/i.test(config.prompt_text)) {
-    return "date";
-  }
+  if (/\byyyy-mm-dd\b/i.test(config.prompt_text)) return "date";
   return "any";
-}
-
-export function formatCollectInputPrompt(
-  prompt: string,
-  config: Pick<CollectInputNodeConfig, "prompt_text" | "validation">,
-): string {
-  if (resolveCollectInputValidation(config) !== "date") return prompt;
-  return prompt
-    .replace(/\byyyy-mm-dd\b/gi, "DD-MM-YYYY")
-    .replace(
-      /\b(\d{4})-(\d{2})-(\d{2})\b/g,
-      (_match, year: string, month: string, day: string) =>
-        `${day}-${month}-${year}`,
-    );
 }
 
 export function isValidCollectInput(
@@ -63,15 +47,11 @@ export function isValidCollectInput(
       return digits.length >= 7 && digits.length <= 15;
     }
     case "date": {
-      const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(trimmed);
-      if (!match) return false;
-      const [, day, month, year] = match;
-      const date = new Date(
-        `${year}-${month}-${day}T00:00:00.000Z`,
-      );
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return false;
+      const date = new Date(`${trimmed}T00:00:00.000Z`);
       return (
         !Number.isNaN(date.getTime()) &&
-        date.toISOString().slice(0, 10) === `${year}-${month}-${day}`
+        date.toISOString().slice(0, 10) === trimmed
       );
     }
     case "regex":

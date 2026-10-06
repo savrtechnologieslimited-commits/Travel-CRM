@@ -40,10 +40,7 @@ import {
   engineSendText,
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
-import {
-  formatCollectInputPrompt,
-  isValidCollectInput,
-} from "./input-validation";
+import { isValidCollectInput } from "./input-validation";
 import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
 import {
@@ -1294,10 +1291,7 @@ async function advanceFromNodeKey(
     userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          text: formatCollectInputPrompt(
-            interpolateVars(cfg.prompt_text, run.vars),
-            cfg,
-          ),
+          text: interpolateVars(cfg.prompt_text, run.vars),
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
           node_type: "collect_input",
@@ -2062,10 +2056,7 @@ async function handleReplyForActiveRun(
           userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          text: formatCollectInputPrompt(
-            interpolateVars(cfg.prompt_text, run.vars),
-            cfg,
-          ),
+          text: interpolateVars(cfg.prompt_text, run.vars),
         });
         await logEvent(db, run.id, "fallback_fired", currentNode.node_key, {
           action: "reprompt",

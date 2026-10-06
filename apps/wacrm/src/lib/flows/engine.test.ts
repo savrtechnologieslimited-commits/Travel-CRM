@@ -1473,7 +1473,7 @@ describe("send_buttons / send_list interpolate {{vars.*}} (#553)", () => {
 
     it("repeats the same question for an invalid format without exhausting retries", async () => {
       const prompt =
-        "What is your planned travel date? Reply in DD-MM-YYYY format, for example: 25-10-2026.";
+        "What is your planned travel date? Reply in YYYY-MM-DD format, for example: 2026-10-25.";
 
       const result = await dispatch(text("next Friday"));
 
@@ -1509,14 +1509,14 @@ describe("send_buttons / send_list interpolate {{vars.*}} (#553)", () => {
     });
 
     it("captures a valid answer and advances the flow", async () => {
-      const result = await dispatch(text("25-10-2026"));
+      const result = await dispatch(text("2026-10-25"));
 
       expect(result).toMatchObject({ consumed: true, outcome: "completed" });
       expect(h.state.updates).toContainEqual(
         expect.objectContaining({
           table: "flow_runs",
           row: expect.objectContaining({
-            vars: expect.objectContaining({ travel_date: "25-10-2026" }),
+            vars: expect.objectContaining({ travel_date: "2026-10-25" }),
           }),
         }),
       );

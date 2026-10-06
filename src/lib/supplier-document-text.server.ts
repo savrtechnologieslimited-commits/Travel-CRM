@@ -49,13 +49,19 @@ export async function extractSupplierDocumentTextFromFile(input: SupplierDocumen
           writable: true,
         });
       }
-      const { PDFParse } = await import("pdf-parse");
+      const [{ PDFParse }, { getData: getPdfWorkerData }] = await Promise.all([
+        import("pdf-parse"),
+        import("pdf-parse/worker"),
+      ]);
+      PDFParse.setWorker(getPdfWorkerData());
       const parser = new PDFParse({ data: buffer });
       const result = await parser.getText();
       await parser.destroy();
       const text = result.text.trim();
       if (text) {
-        const hasLegacyServerOcr = Boolean(process.env.PADDLE_OCR_URL || process.env.OCR_SERVICE_API_KEY);
+        const hasLegacyServerOcr = Boolean(
+          process.env["PADDLE_OCR_URL"] || process.env["OCR_SERVICE_API_KEY"],
+        );
         if (hasLegacyServerOcr) {
           try {
             const ocrResult = await new PaddleOCRAdapter().extract({
@@ -72,7 +78,10 @@ export async function extractSupplierDocumentTextFromFile(input: SupplierDocumen
       }
     }
 
-    if (name.endsWith(".docx") || mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
+    if (
+      name.endsWith(".docx") ||
+      mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ) {
       const result = await mammoth.extractRawText({ buffer });
       const text = result.value.trim();
       if (text) return text;
@@ -83,11 +92,12 @@ export async function extractSupplierDocumentTextFromFile(input: SupplierDocumen
       if (text) return text;
     }
 
-    const looksLikeScannedImage = name.match(/\.(png|jpg|jpeg|bmp|tiff|webp)$/i) || mimeType.startsWith("image/");
+    const looksLikeScannedImage =
+      name.match(/\.(png|jpg|jpeg|bmp|tiff|webp)$/i) || mimeType.startsWith("image/");
     if (looksLikeScannedImage || name.endsWith(".pdf") || mimeType === "application/pdf") {
       const ocrCandidate = await extractDocumentCandidate({
         fileName: input.fileName,
-        mimeType: input.mimeType,
+        ...(input.mimeType ? { mimeType: input.mimeType } : {}),
         file: buffer,
       });
       if (ocrCandidate.text.trim()) return ocrCandidate.text.trim();
@@ -103,6 +113,10 @@ export async function extractSupplierDocumentTextFromFile(input: SupplierDocumen
     );
   } catch (error) {
     if (error instanceof ItineraryGenerationError) throw error;
-    throw new ItineraryGenerationError("INVALID_INPUT", "The supplier document could not be converted to text.");
+    console.error("[Supplier document extraction] Conversion failed.", error);
+    throw new ItineraryGenerationError(
+      "INVALID_INPUT",
+      "The supplier document could not be converted to text.",
+    );
   }
 }

@@ -116,6 +116,7 @@ import {
   ITINERARY_COST_CATEGORIES,
   createItineraryCostLine,
   deleteItineraryCostLine,
+  hasConfiguredPricingLines,
   summarizeItineraryCostSections,
   updateItineraryCostLine,
   validateItineraryCostLine,
@@ -4944,22 +4945,30 @@ function ItineraryBuilderPage() {
     const markupPercentage = Number.isFinite(markup) ? markup : 12;
     const gstPercentage = Number.isFinite(gst) ? gst : 5;
 
-    setMarginLines([
-      {
-        id: crypto.randomUUID(),
-        detail: "Margin",
-        percentage: markupPercentage,
-        amount: (markupPercentage * quoteBase) / 100,
-      },
-    ]);
-    setTaxLines([
-      {
-        id: crypto.randomUUID(),
-        detail: "GST",
-        percentage: gstPercentage,
-        amount: (gstPercentage * quoteBase) / 100,
-      },
-    ]);
+    setMarginLines((current) =>
+      hasConfiguredPricingLines(current)
+        ? current
+        : [
+            {
+              id: crypto.randomUUID(),
+              detail: "Margin",
+              percentage: markupPercentage,
+              amount: (markupPercentage * quoteBase) / 100,
+            },
+          ],
+    );
+    setTaxLines((current) =>
+      hasConfiguredPricingLines(current)
+        ? current
+        : [
+            {
+              id: crypto.randomUUID(),
+              detail: "GST",
+              percentage: gstPercentage,
+              amount: (gstPercentage * quoteBase) / 100,
+            },
+          ],
+    );
     pricingLinesInitializedRef.current = true;
   }, [
     appSettings.data,
@@ -7536,7 +7545,6 @@ function ItineraryBuilderPage() {
           if (Array.isArray(snapshot.marginLines) && Array.isArray(snapshot.taxLines)) {
             setMarginLines(snapshot.marginLines);
             setTaxLines(snapshot.taxLines);
-            pricingLinesInitializedRef.current = true;
           }
           setActivitiesTransfersEnabled(Boolean(snapshot.activitiesTransfersEnabled));
           setHotelsEnabled(Boolean(snapshot.hotelsEnabled));

@@ -5,6 +5,7 @@ import {
   createItineraryCostLine,
   deleteItineraryCostLine,
   ensureCostLineItemScope,
+  hasConfiguredPricingLines,
   summarizeItineraryCostSections,
   updateItineraryCostLine,
   validateItineraryCostLine,
@@ -24,6 +25,12 @@ describe("itinerary internal costing", () => {
       "EXTRA_TRANSPORT",
       "OTHER",
     ]);
+  });
+
+  test("detects blank saved pricing rows so configured markup and tax defaults can be restored", () => {
+    expect(hasConfiguredPricingLines([{ percentage: "", amount: "" }])).toBe(false);
+    expect(hasConfiguredPricingLines([{ percentage: 0, amount: 0 }])).toBe(true);
+    expect(hasConfiguredPricingLines([{ percentage: 12, amount: 0 }])).toBe(true);
   });
 
   test("creates a line and calculates quantity × unit cost deterministically", () => {

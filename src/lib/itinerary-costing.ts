@@ -52,6 +52,17 @@ export type ItineraryCostSectionSummary = {
   total: number;
 };
 
+export type PricingAdjustmentLine = {
+  percentage: number | string;
+  amount: number | string;
+};
+
+export function hasConfiguredPricingLines(lines: readonly PricingAdjustmentLine[]) {
+  return lines.some(
+    (line) => String(line.percentage).trim() !== "" || String(line.amount).trim() !== "",
+  );
+}
+
 const CURRENCY_PATTERN = /^[A-Z]{3}$/;
 
 export function normalizeCurrency(value?: string | null, fallback = "INR") {

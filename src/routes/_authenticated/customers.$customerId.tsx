@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,7 +38,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Database, Json } from "@/integrations/supabase/types";
 import { buildPublicItineraryShareUrl, createItineraryShareFn } from "@/lib/itinerary-share";
 
@@ -294,34 +294,45 @@ function VoucherControl({
   customerId,
   itineraryId,
   item,
+  bookingPdf = false,
 }: {
   customerId: string;
   itineraryId: string;
   item: ItinerarySummaryItem;
+  bookingPdf?: boolean;
 }) {
+  const queryClient = useQueryClient();
   const [isUploading, setIsUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const metadata = readItemMetadata(item.metadata);
-  const voucherPath =
-    typeof metadata["voucher_path"] === "string" ? metadata["voucher_path"] : null;
-  const voucherName =
-    typeof metadata["voucher_name"] === "string" ? metadata["voucher_name"] : null;
+  const pathKey = bookingPdf ? "booking_pdf_path" : "voucher_path";
+  const nameKey = bookingPdf ? "booking_pdf_name" : "voucher_name";
+  const voucherPath = typeof metadata[pathKey] === "string" ? metadata[pathKey] : null;
+  const voucherName = typeof metadata[nameKey] === "string" ? metadata[nameKey] : null;
 
   async function uploadVoucher(file: File) {
+    if (
+      bookingPdf &&
+      file.type !== "application/pdf" &&
+      !file.name.toLowerCase().endsWith(".pdf")
+    ) {
+      setError("Choose a PDF file for the booking document.");
+      return;
+    }
     setIsUploading(true);
     setError(null);
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `${customerId}/${itineraryId}/${item.id}/${crypto.randomUUID()}-${safeName}`;
     try {
       const { error: uploadError } = await supabase.storage.from("itineraries").upload(path, file, {
-        contentType: file.type || "application/octet-stream",
+        contentType: file.type || (bookingPdf ? "application/pdf" : "application/octet-stream"),
         upsert: false,
       });
       if (uploadError) throw uploadError;
       const { error: updateError } = await supabase
         .from("itinerary_day_items")
         .update({
-          metadata: { ...metadata, voucher_path: path, voucher_name: file.name },
+          metadata: { ...metadata, [pathKey]: path, [nameKey]: file.name },
         })
         .eq("id", item.id);
       if (updateError) {
@@ -333,9 +344,16 @@ function VoucherControl({
         }
         throw updateError;
       }
+      await queryClient.invalidateQueries({
+        queryKey: ["customer-selected-itinerary-summaries"],
+      });
     } catch (uploadFailure) {
       setError(
-        uploadFailure instanceof Error ? uploadFailure.message : "Could not upload this voucher.",
+        uploadFailure instanceof Error
+          ? uploadFailure.message
+          : bookingPdf
+            ? "Could not upload this booking PDF."
+            : "Could not upload this voucher.",
       );
     } finally {
       setIsUploading(false);
@@ -359,11 +377,19 @@ function VoucherControl({
     <div className="mt-3 flex flex-wrap items-center gap-2">
       <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
         <Upload className="size-3.5" />
-        {isUploading ? "Uploading…" : voucherPath ? "Replace voucher" : "Upload voucher"}
+        {isUploading
+          ? "Uploading…"
+          : bookingPdf
+            ? voucherPath
+              ? "Replace booking PDF"
+              : "Upload booking PDF"
+            : voucherPath
+              ? "Replace voucher"
+              : "Upload voucher"}
         <input
           type="file"
           className="sr-only"
-          accept=".pdf,.jpg,.jpeg,.png,.webp"
+          accept={bookingPdf ? ".pdf,application/pdf" : ".pdf,.jpg,.jpeg,.png,.webp"}
           disabled={isUploading}
           onChange={(event) => {
             const file = event.target.files?.[0];
@@ -381,7 +407,7 @@ function VoucherControl({
           onClick={() => void openVoucher()}
         >
           <ExternalLink className="mr-1 size-3.5" />
-          {voucherName || "Open voucher"}
+          {voucherName || (bookingPdf ? "Open booking PDF" : "Open voucher")}
         </Button>
       )}
       {error && (
@@ -390,6 +416,154 @@ function VoucherControl({
         </p>
       )}
     </div>
+  );
+}
+
+type BookingDocumentCategory = "hotels" | "flights" | "activities" | "others";
+type UploadedBookingDocument = {
+  itinerary: CustomerItinerary;
+  item: ItinerarySummaryItem;
+  category: BookingDocumentCategory;
+  dayNumber: number;
+  name: string;
+  itineraryNumber: number;
+};
+
+function getBookingDocumentCategory(item: ItinerarySummaryItem): BookingDocumentCategory {
+  if (item.item_type === "ACCOMMODATION") return "hotels";
+  if (item.item_type === "FLIGHT") return "flights";
+  if (item.item_type === "ACTIVITY" || item.item_type === "SIGHTSEEING") return "activities";
+  return "others";
+}
+
+function UploadedBookingDocumentCard({ document }: { document: UploadedBookingDocument }) {
+  const [error, setError] = useState<string | null>(null);
+  const metadata = readItemMetadata(document.item.metadata);
+  const path = typeof metadata["booking_pdf_path"] === "string" ? metadata["booking_pdf_path"] : "";
+
+  async function openDocument() {
+    if (!path) return;
+    setError(null);
+    const newWindow = window.open("about:blank", "_blank");
+    if (!newWindow) {
+      setError("Allow pop-ups to open this booking PDF.");
+      return;
+    }
+    const { data, error: signedUrlError } = await supabase.storage
+      .from("itineraries")
+      .createSignedUrl(path, 3600);
+    if (signedUrlError) {
+      newWindow.close();
+      setError(signedUrlError.message);
+      return;
+    }
+    newWindow.location.href = data.signedUrl;
+  }
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-md border border-slate-200 bg-white p-3">
+      <div>
+        <p className="text-sm font-medium text-slate-900">{document.name}</p>
+        <p className="mt-0.5 text-xs text-slate-500">
+          Day {document.dayNumber} · {document.item.title || "Booking"}
+        </p>
+      </div>
+      <Button type="button" variant="outline" size="sm" onClick={() => void openDocument()}>
+        <ExternalLink className="mr-1.5 size-3.5" />
+        View PDF
+      </Button>
+      {error && (
+        <p className="w-full text-xs text-rose-700" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ItineraryUploadedDocuments({ documents }: { documents: UploadedBookingDocument[] }) {
+  const categoryLabels: Record<BookingDocumentCategory, string> = {
+    hotels: "Hotels",
+    flights: "Flights",
+    activities: "Activities",
+    others: "Others",
+  };
+  const categories = (Object.keys(categoryLabels) as BookingDocumentCategory[]).filter((category) =>
+    documents.some((document) => document.category === category),
+  );
+  const [activeCategory, setActiveCategory] = useState<BookingDocumentCategory | "">("");
+  const selectedCategory = categories.includes(activeCategory)
+    ? activeCategory
+    : (categories[0] ?? "");
+
+  return (
+    <Tabs
+      value={selectedCategory}
+      onValueChange={(value) => {
+        const category = categories.find((entry) => entry === value);
+        if (category) setActiveCategory(category);
+      }}
+      className="space-y-3"
+    >
+      <TabsList className="h-auto flex-wrap justify-start gap-1 bg-slate-100 p-1">
+        {categories.map((category) => (
+          <TabsTrigger key={category} value={category}>
+            {categoryLabels[category]}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {categories.map((category) => (
+        <TabsContent key={category} value={category} className="mt-0 space-y-2">
+          {documents
+            .filter((document) => document.category === category)
+            .map((document) => (
+              <UploadedBookingDocumentCard key={document.item.id} document={document} />
+            ))}
+        </TabsContent>
+      ))}
+    </Tabs>
+  );
+}
+
+function UploadedBookingDocuments({ documents }: { documents: UploadedBookingDocument[] }) {
+  const itineraries = Array.from(
+    new Map(documents.map((document) => [document.itinerary.id, document.itinerary])).values(),
+  );
+  const [activeItineraryId, setActiveItineraryId] = useState("");
+  const selectedItineraryId = itineraries.some((itinerary) => itinerary.id === activeItineraryId)
+    ? activeItineraryId
+    : (itineraries[0]?.id ?? "");
+
+  if (itineraries.length === 0) {
+    return <p className="text-sm text-slate-500">No booking PDFs have been uploaded yet.</p>;
+  }
+
+  if (itineraries.length === 1) {
+    return (
+      <ItineraryUploadedDocuments
+        documents={documents.filter((document) => document.itinerary.id === selectedItineraryId)}
+      />
+    );
+  }
+
+  return (
+    <Tabs value={selectedItineraryId} onValueChange={setActiveItineraryId} className="space-y-3">
+      <TabsList className="h-auto flex-wrap justify-start gap-1 bg-slate-100 p-1">
+        {itineraries.map((itinerary) => (
+          <TabsTrigger key={itinerary.id} value={itinerary.id}>
+            Assigned itinerary{" "}
+            {documents.find((document) => document.itinerary.id === itinerary.id)?.itineraryNumber}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {itineraries.map((itinerary) => (
+        <TabsContent key={itinerary.id} value={itinerary.id} className="mt-0">
+          <ItineraryUploadedDocuments
+            documents={documents.filter((document) => document.itinerary.id === itinerary.id)}
+          />
+        </TabsContent>
+      ))}
+    </Tabs>
   );
 }
 
@@ -410,18 +584,28 @@ function ItinerarySummaryCards({
   const activities = items.filter(
     (item) => item.item_type === "ACTIVITY" || item.item_type === "SIGHTSEEING",
   );
+  const otherItems = items.filter(
+    (item) =>
+      item.item_type !== "ACCOMMODATION" &&
+      item.item_type !== "FLIGHT" &&
+      item.item_type !== "ACTIVITY" &&
+      item.item_type !== "SIGHTSEEING",
+  );
 
   function makeHotelSearchLink(item: ItinerarySummaryItem) {
     const link = new URL("https://www.makemytrip.com/hotels/");
+    const roomDetails = readItemMetadata(item.metadata)["room_details"];
+    const rooms =
+      item.rooms ?? (Array.isArray(roomDetails) && roomDetails.length > 0 ? roomDetails.length : 1);
     link.searchParams.set(
       "q",
       generateHotelSearchQuery({
-        destination: item.hotel_name || item.hotel_city || item.location || item.title,
-        checkIn: item.check_in || "",
-        checkOut: item.check_out || "",
-        adults: item.adults ?? itinerary.adults,
-        children: item.children ?? itinerary.children,
-        rooms: item.rooms ?? 1,
+        destination: item.hotel_name || item.title || item.hotel_city || item.location,
+        checkIn: item.check_in || itinerary.travel_start_date || "",
+        checkOut: item.check_out || itinerary.travel_end_date || "",
+        adults: item.adults ?? itinerary.adults ?? 1,
+        children: item.children ?? itinerary.children ?? 0,
+        rooms,
       }),
     );
     return link.toString();
@@ -430,24 +614,31 @@ function ItinerarySummaryCards({
   function makeFlightSearchLink(item: ItinerarySummaryItem) {
     const from = item.departure_airport || item.departure_city || "";
     const to = item.arrival_airport || item.arrival_city || "";
-    if (!makeMyTripFlightProvider || !from || !to || !item.flight_departure_date) return null;
+    const departure = item.flight_departure_date || itinerary.travel_start_date;
+    if (!makeMyTripFlightProvider || !from || !to || !departure) return null;
     return buildFlightSearchLink(makeMyTripFlightProvider, {
       from,
       to,
-      departure: item.flight_departure_date,
-      ...(item.flight_arrival_date ? { returnDate: item.flight_arrival_date } : {}),
+      departure,
       adults: item.adults ?? itinerary.adults ?? 1,
       children: item.children ?? itinerary.children ?? 0,
-      tripType: item.flight_arrival_date ? "round-trip" : "one-way",
+      tripType: "one-way",
     });
   }
 
-  function renderCard(item: ItinerarySummaryItem, details: ReactNode, searchUrl?: string | null) {
+  function renderCard(
+    item: ItinerarySummaryItem,
+    details: ReactNode,
+    searchUrl?: string | null,
+    title?: string,
+  ) {
     return (
       <article key={item.id} className="rounded-lg border border-slate-200 bg-white p-4">
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <h4 className="font-semibold text-slate-900">{item.title || "Travel service"}</h4>
+            <h4 className="font-semibold text-slate-900">
+              {title || item.title || "Travel service"}
+            </h4>
             <p className="mt-1 text-xs text-slate-500">
               Day {dayNumbers.get(item.itinerary_day_id) ?? "—"}
               {item.location ? ` · ${item.location}` : ""}
@@ -467,6 +658,7 @@ function ItinerarySummaryCards({
           </a>
         )}
         <VoucherControl customerId={customerId} itineraryId={itinerary.id} item={item} />
+        <VoucherControl customerId={customerId} itineraryId={itinerary.id} item={item} bookingPdf />
       </article>
     );
   }
@@ -482,9 +674,16 @@ function ItinerarySummaryCards({
           {itinerary.travel_end_date ? ` – ${formatDate(itinerary.travel_end_date)}` : ""}
         </p>
       </header>
-      <div className="space-y-5">
+      <Tabs defaultValue="hotels" className="space-y-4">
+        <TabsList className="h-auto flex-wrap justify-start gap-1 bg-slate-100 p-1">
+          <TabsTrigger value="hotels">Hotels</TabsTrigger>
+          <TabsTrigger value="flights">Flights</TabsTrigger>
+          <TabsTrigger value="activities">Activities</TabsTrigger>
+          <TabsTrigger value="others">Others</TabsTrigger>
+        </TabsList>
         {[
           {
+            value: "hotels",
             title: "Hotel bookings",
             empty: "No hotel bookings in this itinerary.",
             cards: hotels.map((item) =>
@@ -522,10 +721,12 @@ function ItinerarySummaryCards({
                   {item.customer_facing_info && <p>{item.customer_facing_info}</p>}
                 </>,
                 makeHotelSearchLink(item),
+                item.hotel_name || item.title,
               ),
             ),
           },
           {
+            value: "flights",
             title: "Flights",
             empty: "No flights in this itinerary.",
             cards: flights.map((item) =>
@@ -569,6 +770,7 @@ function ItinerarySummaryCards({
             ),
           },
           {
+            value: "activities",
             title: "Activities",
             empty: "No activities in this itinerary.",
             cards: activities.map((item) =>
@@ -583,17 +785,53 @@ function ItinerarySummaryCards({
               ),
             ),
           },
+          {
+            value: "others",
+            title: "Other bookings",
+            empty: "No other bookings in this itinerary.",
+            cards: otherItems.map((item) =>
+              renderCard(
+                item,
+                <>
+                  {item.description && <p>{item.description}</p>}
+                  {(item.pickup || item.dropoff) && (
+                    <p>
+                      {[
+                        item.pickup ? `From: ${item.pickup}` : "",
+                        item.dropoff ? `To: ${item.dropoff}` : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </p>
+                  )}
+                  {(item.departure_time || item.arrival_time) && (
+                    <p>
+                      {item.departure_time || "Start time not set"}
+                      {" → "}
+                      {item.arrival_time || "End time not set"}
+                    </p>
+                  )}
+                  {item.visa_country && <p>Country: {item.visa_country}</p>}
+                  {item.visa_type && <p>Visa type: {item.visa_type}</p>}
+                  {item.visa_customer_information && <p>{item.visa_customer_information}</p>}
+                  {item.notes && <p>{item.notes}</p>}
+                </>,
+              ),
+            ),
+          },
         ].map((section) => (
-          <section key={section.title} className="space-y-3">
-            <h4 className="text-sm font-semibold text-slate-800">{section.title}</h4>
-            {section.cards.length > 0 ? (
-              <div className="grid gap-3 lg:grid-cols-2">{section.cards}</div>
-            ) : (
-              <p className="text-sm text-slate-500">{section.empty}</p>
-            )}
-          </section>
+          <TabsContent key={section.value} value={section.value} className="mt-0">
+            <section className="space-y-3">
+              <h4 className="text-sm font-semibold text-slate-800">{section.title}</h4>
+              {section.cards.length > 0 ? (
+                <div className="grid gap-3 lg:grid-cols-2">{section.cards}</div>
+              ) : (
+                <p className="text-sm text-slate-500">{section.empty}</p>
+              )}
+            </section>
+          </TabsContent>
         ))}
-      </div>
+      </Tabs>
     </article>
   );
 }
@@ -623,16 +861,35 @@ function CustomerDetailPage() {
   const { data, isLoading, isError, error } = useCustomer(customerId);
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("overview");
-  const selectedItineraries = data?.itineraries ?? [];
-  const selectedItineraryIds = selectedItineraries.map((itinerary) => itinerary.id);
+  const assignedItineraries = data?.itineraries ?? [];
+  const finalizedItineraries = assignedItineraries.filter(
+    (itinerary) => itinerary.show_in_customer_bookings,
+  );
+  const finalizedItineraryIds = finalizedItineraries.map((itinerary) => itinerary.id);
+  const [selectedItineraryIds, setSelectedItineraryIds] = useState<string[]>([]);
+  const [savingItinerarySelection, setSavingItinerarySelection] = useState(false);
+  const [itinerarySelectionError, setItinerarySelectionError] = useState<string | null>(null);
+  const [activeBookingItineraryId, setActiveBookingItineraryId] = useState("");
+  const [uploadedDocumentsOpen, setUploadedDocumentsOpen] = useState(false);
+
+  useEffect(() => {
+    const persistedSelection = (data?.itineraries ?? [])
+      .filter((itinerary) => itinerary.show_in_customer_bookings)
+      .map((itinerary) => itinerary.id);
+    setSelectedItineraryIds(persistedSelection);
+    setActiveBookingItineraryId((current) =>
+      persistedSelection.includes(current) ? current : (persistedSelection[0] ?? ""),
+    );
+  }, [customerId, data?.itineraries]);
+
   const selectedSummaries = useQuery({
-    queryKey: ["customer-selected-itinerary-summaries", selectedItineraryIds],
-    enabled: selectedItineraryIds.length > 0,
+    queryKey: ["customer-selected-itinerary-summaries", finalizedItineraryIds],
+    enabled: finalizedItineraryIds.length > 0,
     queryFn: async () => {
       const { data: days, error: daysError } = await supabase
         .from("itinerary_days")
         .select("id,itinerary_id,day_number")
-        .in("itinerary_id", selectedItineraryIds)
+        .in("itinerary_id", finalizedItineraryIds)
         .order("day_number", { ascending: true });
       if (daysError) throw daysError;
       const dayIds = (days ?? []).map((day) => day.id);
@@ -659,6 +916,64 @@ function CustomerDetailPage() {
   if (!customer) return <p className="text-sm text-slate-500">Customer not found.</p>;
 
   const primaryPhone = customer.whatsapp ?? customer.mobile ?? "—";
+  const summaryDays = selectedSummaries.data?.days ?? [];
+  const uploadedBookingDocuments = (selectedSummaries.data?.items ?? []).flatMap((item) => {
+    const metadata = readItemMetadata(item.metadata);
+    const path = metadata["booking_pdf_path"];
+    if (typeof path !== "string") return [];
+    const day = summaryDays.find((entry) => entry.id === item.itinerary_day_id);
+    const itinerary = finalizedItineraries.find((entry) => entry.id === day?.itinerary_id);
+    if (!day || !itinerary) return [];
+    return [
+      {
+        itinerary,
+        item,
+        category: getBookingDocumentCategory(item),
+        dayNumber: day.day_number,
+        name:
+          typeof metadata["booking_pdf_name"] === "string"
+            ? metadata["booking_pdf_name"]
+            : item.title || "Booking PDF",
+        itineraryNumber: assignedItineraries.findIndex((entry) => entry.id === itinerary.id) + 1,
+      },
+    ];
+  });
+
+  async function saveItinerarySelection() {
+    if (!data?.itinerarySelectionAvailable) {
+      setItinerarySelectionError(
+        "Finalised itinerary selection is unavailable until the CRM database is updated.",
+      );
+      return;
+    }
+    setSavingItinerarySelection(true);
+    setItinerarySelectionError(null);
+    try {
+      const selectedIds = new Set(selectedItineraryIds);
+      const updates = await Promise.all(
+        assignedItineraries.map((itinerary) =>
+          supabase
+            .from("itineraries")
+            .update({ show_in_customer_bookings: selectedIds.has(itinerary.id) })
+            .eq("id", itinerary.id)
+            .eq("customer_id", customerId),
+        ),
+      );
+      const failedUpdate = updates.find((result) => result.error);
+      if (failedUpdate?.error) throw failedUpdate.error;
+      await queryClient.invalidateQueries({ queryKey: ["customer", customerId] });
+      toast.success("Finalised itinerary selection saved");
+    } catch (saveError) {
+      const message =
+        saveError instanceof Error
+          ? saveError.message
+          : "Could not save the finalised itinerary selection.";
+      setItinerarySelectionError(message);
+      toast.error(message);
+    } finally {
+      setSavingItinerarySelection(false);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -909,14 +1224,34 @@ function CustomerDetailPage() {
       {tab === "bookings" && (
         <div className="space-y-4">
           <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <h2 className="text-sm font-semibold text-slate-900">Itinerary bookings</h2>
-            <p className="mt-1 text-xs text-slate-500">
-              Bookings from all itineraries assigned to this customer.
-            </p>
-            {selectedItineraries.length === 0 ? (
-              <p className="mt-4 text-sm text-slate-500">
-                No itineraries have been assigned to this customer yet.
-              </p>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">
+                  Finalised itinerary bookings
+                </h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Bookings for the itineraries selected as finalised in the Itineraries tab.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={selectedSummaries.isLoading || uploadedBookingDocuments.length === 0}
+                onClick={() => setUploadedDocumentsOpen((open) => !open)}
+              >
+                {uploadedDocumentsOpen ? "Hide uploaded documents" : "View uploaded documents"}
+                {uploadedBookingDocuments.length > 0 ? ` (${uploadedBookingDocuments.length})` : ""}
+              </Button>
+            </div>
+            {uploadedDocumentsOpen && !selectedSummaries.isLoading && (
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <h3 className="mb-3 text-sm font-semibold text-slate-900">Uploaded booking PDFs</h3>
+                <UploadedBookingDocuments documents={uploadedBookingDocuments} />
+              </div>
+            )}
+            {finalizedItineraries.length === 0 ? (
+              <p className="mt-4 text-sm text-slate-500">No finalised itineraries selected yet.</p>
             ) : selectedSummaries.isLoading ? (
               <p className="mt-4 text-sm text-slate-500">Loading itinerary bookings…</p>
             ) : selectedSummaries.isError ? (
@@ -927,23 +1262,44 @@ function CustomerDetailPage() {
                   : "Unknown error"}
               </p>
             ) : (
-              <div className="mt-4 space-y-4">
-                {selectedItineraries.map((itinerary) => (
-                  <ItinerarySummaryCards
-                    key={itinerary.id}
-                    customerId={customer.id}
-                    itinerary={itinerary}
-                    days={(selectedSummaries.data?.days ?? []).filter(
-                      (day) => day.itinerary_id === itinerary.id,
-                    )}
-                    items={(selectedSummaries.data?.items ?? []).filter((item) =>
-                      (selectedSummaries.data?.days ?? [])
-                        .filter((day) => day.itinerary_id === itinerary.id)
-                        .some((day) => day.id === item.itinerary_day_id),
-                    )}
-                  />
+              <Tabs
+                value={activeBookingItineraryId || finalizedItineraryIds[0] || ""}
+                onValueChange={setActiveBookingItineraryId}
+                className="mt-4"
+              >
+                <TabsList className="h-auto flex-wrap justify-start gap-1 bg-slate-100 p-1">
+                  {finalizedItineraries.map((itinerary) => {
+                    const assignedIndex = assignedItineraries.findIndex(
+                      (entry) => entry.id === itinerary.id,
+                    );
+                    return (
+                      <TabsTrigger
+                        key={itinerary.id}
+                        value={itinerary.id}
+                        className="rounded-md px-3 py-1.5 text-sm"
+                      >
+                        Assigned itinerary {assignedIndex + 1}
+                      </TabsTrigger>
+                    );
+                  })}
+                </TabsList>
+                {finalizedItineraries.map((itinerary) => (
+                  <TabsContent key={itinerary.id} value={itinerary.id} className="pt-4">
+                    <ItinerarySummaryCards
+                      customerId={customer.id}
+                      itinerary={itinerary}
+                      days={(selectedSummaries.data?.days ?? []).filter(
+                        (day) => day.itinerary_id === itinerary.id,
+                      )}
+                      items={(selectedSummaries.data?.items ?? []).filter((item) =>
+                        (selectedSummaries.data?.days ?? [])
+                          .filter((day) => day.itinerary_id === itinerary.id)
+                          .some((day) => day.id === item.itinerary_day_id),
+                      )}
+                    />
+                  </TabsContent>
                 ))}
-              </div>
+              </Tabs>
             )}
           </section>
 
@@ -1004,6 +1360,77 @@ function CustomerDetailPage() {
               ))}
             </div>
           )}
+          <section className="mt-6 border-t border-slate-200 pt-5">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900">Select finalised itinerary</h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Choose which assigned itineraries should appear in the Bookings tab.
+                </p>
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={() => void saveItinerarySelection()}
+                disabled={
+                  savingItinerarySelection ||
+                  !data.itinerarySelectionAvailable ||
+                  assignedItineraries.length === 0
+                }
+              >
+                {savingItinerarySelection ? "Saving…" : "Save selection"}
+              </Button>
+            </div>
+            {!data.itinerarySelectionAvailable && (
+              <p className="mb-3 text-sm text-amber-700" role="status">
+                Finalised itinerary selection is unavailable until the CRM database is updated.
+              </p>
+            )}
+            {itinerarySelectionError && (
+              <p className="mb-3 text-sm text-rose-700" role="alert">
+                Could not save selection: {itinerarySelectionError}
+              </p>
+            )}
+            {assignedItineraries.length === 0 ? (
+              <p className="text-sm text-slate-500">
+                Assign an itinerary before choosing a finalised itinerary.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {assignedItineraries.map((itinerary, index) => (
+                  <label
+                    key={itinerary.id}
+                    className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3 hover:bg-slate-50"
+                  >
+                    <input
+                      type="checkbox"
+                      aria-label={`Select Assigned itinerary ${index + 1} as finalised`}
+                      checked={selectedItineraryIds.includes(itinerary.id)}
+                      disabled={!data.itinerarySelectionAvailable || savingItinerarySelection}
+                      onChange={(event) => {
+                        setSelectedItineraryIds((current) =>
+                          event.target.checked
+                            ? [...new Set([...current, itinerary.id])]
+                            : current.filter((id) => id !== itinerary.id),
+                        );
+                        setItinerarySelectionError(null);
+                      }}
+                      className="mt-1 size-4 shrink-0 accent-slate-900"
+                    />
+                    <span className="min-w-0">
+                      <span className="block text-sm font-medium text-slate-900">
+                        Assigned itinerary {index + 1}:{" "}
+                        {itinerary.title ?? itinerary.name ?? "Untitled itinerary"}
+                      </span>
+                      <span className="mt-1 block text-xs text-slate-500">
+                        {itinerary.destinations?.name ?? "Destination pending"}
+                      </span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </section>
         </section>
       )}
 

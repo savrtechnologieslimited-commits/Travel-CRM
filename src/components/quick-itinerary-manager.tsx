@@ -14,6 +14,7 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import type { Database } from "@/integrations/supabase/types";
+import { dedupeItineraryDraftRows, type ItineraryDraftWorkspaceRow } from "@/lib/data";
 import { addImagesToItineraryFn } from "@/lib/itinerary-images";
 import {
   extractItineraryFromSupplierDocumentFn,
@@ -195,14 +196,17 @@ export function QuickItineraryManager() {
               : "The itinerary is ready, but some images could not be loaded into the preview.",
           );
         }
-        const draftSaveLocation = await saveQuickItineraryDraft(
+        const savedDraft = await saveQuickItineraryDraft(
           generated,
           photoResolution.photos,
           sourceText,
         );
         if (cancelled) return;
+        queryClient.setQueryData<ItineraryDraftWorkspaceRow[]>(["itinerary-drafts"], (current) =>
+          dedupeItineraryDraftRows([savedDraft.row, ...(current ?? [])]),
+        );
         await queryClient.invalidateQueries({ queryKey: ["itinerary-drafts"] });
-        if (draftSaveLocation === "browser") {
+        if (savedDraft.location === "browser") {
           setImageMessage((current) =>
             [current, "Draft saved in this browser only because account sync is unavailable."]
               .filter(Boolean)
@@ -527,36 +531,17 @@ async function saveQuickItineraryDraft(
   generated: SupplierImportResult,
   photos: Awaited<ReturnType<typeof resolvePreviewPhotos>>["photos"],
   sourceText: string,
-): Promise<"account" | "browser"> {
+): Promise<{ location: "account" | "browser"; row: ItineraryDraftWorkspaceRow }> {
   const { data: authData, error: authError } = await supabase.auth.getUser();
   if (authError) throw authError;
   if (!authData.user) throw new Error("Sign in before generating a quick itinerary draft.");
 
   const draftId = crypto.randomUUID();
   const snapshot = createQuickItineraryDraftSnapshot(generated, photos, sourceText);
+  const savedAt = new Date().toISOString();
   const draftData =
     snapshot as unknown as Database["public"]["Tables"]["itinerary_drafts"]["Insert"]["draft_data"];
   let databaseError: unknown = null;
-
-  try {
-    const { error } = await supabase.from("itinerary_drafts").upsert(
-      {
-        id: draftId,
-        user_id: authData.user.id,
-        itinerary_id: null,
-        lead_id: null,
-        draft_data: draftData,
-      },
-      { onConflict: "id" },
-    );
-    if (error) throw error;
-  } catch (error) {
-    databaseError = error;
-    console.warn(
-      "[Quick itinerary] Account draft save failed; trying browser draft storage.",
-      error,
-    );
-  }
 
   let browserStorageError: unknown = null;
   try {
@@ -564,12 +549,34 @@ async function saveQuickItineraryDraft(
     window.localStorage.setItem(`${storageBaseKey}:id`, draftId);
     window.localStorage.setItem(
       `${storageBaseKey}:snapshot`,
-      JSON.stringify({ savedAt: Date.now(), snapshot }),
+      JSON.stringify({ savedAt: Date.parse(savedAt), snapshot }),
     );
     window.localStorage.setItem(`savr-itinerary-last-draft:${authData.user.id}`, draftId);
   } catch (error) {
     browserStorageError = error;
     console.warn("[Quick itinerary] Browser draft backup failed.", error);
+  }
+
+  try {
+    const { data, error } = await supabase
+      .from("itinerary_drafts")
+      .upsert(
+        {
+          id: draftId,
+          user_id: authData.user.id,
+          itinerary_id: null,
+          lead_id: null,
+          draft_data: draftData,
+        },
+        { onConflict: "id" },
+      )
+      .select("id,itinerary_id,lead_id,draft_data,updated_at")
+      .single();
+    if (error) throw error;
+    if (!data) throw new Error("The account draft was not returned after saving.");
+  } catch (error) {
+    databaseError = error;
+    console.warn("[Quick itinerary] Account draft save failed.", error);
   }
 
   if (databaseError && browserStorageError) {
@@ -583,5 +590,14 @@ async function saveQuickItineraryDraft(
       `Could not save the quick itinerary draft. ${databaseMessage} ${browserMessage}`,
     );
   }
-  return databaseError ? "browser" : "account";
+  return {
+    location: databaseError ? "browser" : "account",
+    row: {
+      id: draftId,
+      itinerary_id: null,
+      lead_id: null,
+      draft_data: snapshot as unknown as ItineraryDraftWorkspaceRow["draft_data"],
+      updated_at: savedAt,
+    },
+  };
 }

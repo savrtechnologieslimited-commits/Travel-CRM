@@ -10,7 +10,6 @@ import {
   type ItineraryDraft,
   type ItineraryGenerationProvider,
 } from "./ai-itinerary-generation.server";
-import { extractDocumentCandidate, PaddleOCRAdapter } from "./document-ocr";
 import { extractSupplierDocumentTables, type SupplierDocumentTable } from "./supplier-document-tables";
 
 export type SupplierDocumentInput = {
@@ -31,70 +30,16 @@ export type SupplierImportResult = {
   provenance: "AI_SUPPLIER_IMPORT";
 };
 
-function decodeBase64(value: string) {
-  try {
-    return Buffer.from(value, "base64");
-  } catch {
-    throw new ItineraryGenerationError("INVALID_INPUT", "The uploaded document could not be read.");
-  }
-}
-
 export async function extractSupplierDocumentText(input: SupplierDocumentInput) {
   const directText = input.sourceText?.trim();
   if (directText) return directText;
   if (!input.fileBase64 || !input.fileName) throw new ItineraryGenerationError("INVALID_INPUT", "Paste supplier text or provide a document.");
-  const buffer = decodeBase64(input.fileBase64);
-  const name = input.fileName.toLowerCase();
-  const mimeType = input.mimeType ?? "";
-  try {
-    if (name.endsWith(".pdf") || mimeType === "application/pdf") {
-      const { PDFParse } = await import("pdf-parse");
-      const parser = new PDFParse({ data: buffer });
-      const result = await parser.getText();
-      await parser.destroy();
-      const text = result.text.trim();
-      if (text) {
-        const hasLegacyServerOcr = Boolean(process.env.PADDLE_OCR_URL || process.env.OCR_SERVICE_API_KEY);
-        if (hasLegacyServerOcr) {
-          try {
-            const ocrResult = await new PaddleOCRAdapter().extract({ fileName: input.fileName, mimeType, file: buffer });
-            if (ocrResult.tables?.length) {
-              return ocrResult.text.trim() || text;
-            }
-          } catch {
-            // Native text remains usable when the optional OCR service is unavailable.
-          }
-        }
-        return text;
-      }
-    }
-    if (name.endsWith(".docx") || mimeType === "application/vnd.openxmlformats-officedocument.wordprocessingml.document") {
-      const mammoth = (await import("mammoth")).default;
-      const result = await mammoth.extractRawText({ buffer });
-      const text = result.value.trim();
-      if (text) return text;
-    }
-    if (name.endsWith(".txt") || name.endsWith(".md") || mimeType.startsWith("text/")) {
-      const text = buffer.toString("utf8").trim();
-      if (text) return text;
-    }
-
-    const looksLikeScannedImage = name.match(/\.(png|jpg|jpeg|bmp|tiff|webp)$/i) || mimeType.startsWith("image/");
-    if (looksLikeScannedImage || name.endsWith(".pdf") || mimeType === "application/pdf") {
-      const ocrCandidate = await extractDocumentCandidate({
-        fileName: input.fileName,
-        mimeType: input.mimeType,
-        file: buffer,
-      });
-      if (ocrCandidate.text.trim()) return ocrCandidate.text.trim();
-      throw new ItineraryGenerationError("INVALID_INPUT", "This document has no readable text. Paste the supplier text or provide a text-readable PDF, DOCX, TXT, or Markdown file.");
-    }
-
-    throw new ItineraryGenerationError("INVALID_INPUT", "Use pasted text, a text-readable PDF, DOCX, TXT, or Markdown file.");
-  } catch (error) {
-    if (error instanceof ItineraryGenerationError) throw error;
-    throw new ItineraryGenerationError("INVALID_INPUT", "The supplier document could not be converted to text.");
-  }
+  const { extractSupplierDocumentTextFromFile } = await import("./supplier-document-text.server");
+  return extractSupplierDocumentTextFromFile({
+    fileBase64: input.fileBase64,
+    fileName: input.fileName,
+    ...(input.mimeType ? { mimeType: input.mimeType } : {}),
+  });
 }
 
 function findDestinationText(
@@ -149,30 +94,60 @@ export async function extractItineraryFromSupplierDocument(
   options: { provider?: ItineraryGenerationProvider; destinations?: Array<{ id: string; name: string; is_active?: boolean }> } = {},
 ): Promise<SupplierImportResult> {
   const text = await extractSupplierDocumentText(input);
-  const destinationQuery = options.destinations
-    ? { data: options.destinations }
-    : await supabaseAdmin.from("destinations").select("id,name,is_active");
+  let destinationQuery: { data: Array<{ id: string; name: string; is_active?: boolean }> | null; error?: unknown };
+  try {
+    destinationQuery = options.destinations
+      ? { data: options.destinations }
+      : await supabaseAdmin.from("destinations").select("id,name,is_active");
+  } catch (error) {
+    destinationQuery = { data: null, error };
+  }
+  if (destinationQuery.error) {
+    console.warn("[Supplier itinerary import] Destination catalog lookup failed; continuing with the destination text.", destinationQuery.error);
+  }
   const destinations = destinationQuery.data ?? [];
   const destinationText = findDestinationText(text, input.destinationText, destinations);
   if (!destinationText) throw new ItineraryGenerationError("INVALID_INPUT", "A destination is required for supplier import.");
-  let resolution = resolveDestinationText(destinationText, destinations);
-  if (resolution.status === "ambiguous") throw new ItineraryGenerationError("INVALID_INPUT", "The destination matches multiple catalog entries. Add a Destination: label or choose a destination before importing.");
-  if (resolution.status !== "resolved") {
+  let resolution = destinationQuery.error
+    ? { status: "unknown" as const, destination_id: null, candidate_ids: [] }
+    : resolveDestinationText(destinationText, destinations);
+  if (resolution.status === "ambiguous") {
+    console.warn("[Supplier itinerary import] Destination matches multiple catalog entries; generating the draft without linking a destination.", {
+      candidateIds: resolution.candidate_ids,
+    });
+  }
+  if (resolution.status !== "resolved" && resolution.status !== "ambiguous") {
     const existing = destinations.find((destination) => normaliseDestinationName(destination.name) === normaliseDestinationName(destinationText));
     if (existing) {
       if (existing.is_active === false && !options.destinations) {
-        const { error } = await supabaseAdmin.from("destinations").update({ is_active: true }).eq("id", existing.id);
-        if (error) throw new ItineraryGenerationError("PROVIDER_FAILURE", "The destination could not be added to the active catalog.");
+        try {
+          const { error } = await supabaseAdmin.from("destinations").update({ is_active: true }).eq("id", existing.id);
+          if (error) {
+            console.warn("[Supplier itinerary import] Could not reactivate the destination; generating without a catalog link.", error);
+          } else {
+            resolution = { status: "resolved", destination_id: existing.id, candidate_ids: [existing.id] };
+          }
+        } catch (error) {
+          console.warn("[Supplier itinerary import] Could not reactivate the destination; generating without a catalog link.", error);
+        }
+      } else if (existing.is_active !== false) {
+        resolution = { status: "resolved", destination_id: existing.id, candidate_ids: [existing.id] };
       }
-      resolution = { status: "resolved", destination_id: existing.id, candidate_ids: [existing.id] };
     } else if (!options.destinations) {
-      const { data: created, error } = await supabaseAdmin
-        .from("destinations")
-        .insert({ name: destinationText })
-        .select("id")
-        .single();
-      if (error || !created) throw new ItineraryGenerationError("PROVIDER_FAILURE", "The destination could not be added to the catalog.");
-      resolution = { status: "resolved", destination_id: created.id, candidate_ids: [created.id] };
+      try {
+        const { data: created, error } = await supabaseAdmin
+          .from("destinations")
+          .insert({ name: destinationText })
+          .select("id")
+          .single();
+        if (error) {
+          console.warn("[Supplier itinerary import] Could not add the destination to the catalog; generating without a catalog link.", error);
+        } else if (created) {
+          resolution = { status: "resolved", destination_id: created.id, candidate_ids: [created.id] };
+        }
+      } catch (error) {
+        console.warn("[Supplier itinerary import] Could not add the destination to the catalog; generating without a catalog link.", error);
+      }
     }
   }
   const provider = options.provider ?? new OpenAIItineraryProvider();

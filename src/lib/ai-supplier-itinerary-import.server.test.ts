@@ -144,14 +144,21 @@ TABLE: Package terms
     expect(result.draft.days[0]?.items.find((item) => item.item_type === "ACCOMMODATION")).toMatchObject({ hotel_city: "Baku" });
   });
 
-  test("imports uncatalogued destinations and rejects ambiguous catalog matches", async () => {
+  test("generates drafts when destinations are uncatalogued or ambiguous", async () => {
     let calls = 0;
     const countingProvider = { ...provider, generateItinerary: async () => { calls += 1; return provider.generateItinerary({ destination: "Bali" }); } };
     const uncatalogued = await extractItineraryFromSupplierDocument({ sourceText: supplierText }, { provider: countingProvider, destinations: [] });
     expect(uncatalogued.destination_resolution.status).toBe("unresolved");
+    expect(uncatalogued.destination_resolution.destination_id).toBeNull();
     expect(uncatalogued.draft.destination).toBe("Bali");
-    await expect(extractItineraryFromSupplierDocument({ sourceText: supplierText }, { provider: countingProvider, destinations: [{ id: "1", name: "Bali" }, { id: "2", name: "Bali South" }] })).rejects.toThrow("multiple catalog entries");
-    expect(calls).toBe(1);
+    const ambiguous = await extractItineraryFromSupplierDocument(
+      { sourceText: supplierText },
+      { provider: countingProvider, destinations: [{ id: "1", name: "Bali" }, { id: "2", name: "Bali South" }] },
+    );
+    expect(ambiguous.destination_resolution.status).toBe("ambiguous");
+    expect(ambiguous.destination_resolution.destination_id).toBeNull();
+    expect(ambiguous.draft.destination).toBe("Bali");
+    expect(calls).toBe(2);
   });
 
   test("accepts a base64 text document without persisting it", async () => {

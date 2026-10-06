@@ -6434,6 +6434,58 @@ function ItineraryBuilderPage() {
     [],
   );
 
+  const fetchSupplierActivityDetails = useCallback(
+    async (
+      item: TripDayItemState,
+      destination: string,
+    ): Promise<Partial<TripDayItemState> | null> => {
+      const query = (item.title || "").trim();
+      if (
+        query.length < 3 ||
+        (typeof item.metadata?.["google_place_id"] === "string" &&
+          item.metadata["google_place_id"])
+      ) {
+        return null;
+      }
+      try {
+        const searchResult = await lookupGooglePlacesRef.current({
+          data: {
+            action: "search",
+            query,
+            destination: item.location || destination,
+            placeType: "activity",
+          },
+        });
+        if (!Array.isArray(searchResult) || searchResult.length === 0) return null;
+        const match = searchResult[0] as GoogleActivityPlace;
+        const detailsResult = await lookupGooglePlacesRef.current({
+          data: { action: "details", placeId: match.id },
+        });
+        if (!detailsResult || Array.isArray(detailsResult) || typeof detailsResult === "string") {
+          return null;
+        }
+        const activity = detailsResult as GoogleActivityPlace;
+        return {
+          metadata: {
+            ...(item.metadata ?? {}),
+            google_place_id: activity.id || match.id,
+            google_maps_url: activity.mapsUrl ?? match.mapsUrl ?? "",
+            google_activity_website: activity.website ?? match.website ?? "",
+            google_activity_phone: activity.phone ?? match.phone ?? "",
+            google_activity_rating: activity.rating ?? match.rating ?? "",
+            google_activity_reviews: activity.reviews ?? match.reviews ?? "",
+            google_activity_types: activity.types.join(", "),
+            google_activity_opening_hours: activity.openingHours,
+          },
+        };
+      } catch (error) {
+        console.warn("[Itinerary builder] Could not fetch imported activity details.", error);
+        return null;
+      }
+    },
+    [],
+  );
+
   async function extractSupplierDraft(input: {
     sourceText?: string;
     destinationText?: string;
@@ -7101,6 +7153,39 @@ function ItineraryBuilderPage() {
               }),
             );
           }
+          const importedActivities = generatedDaysWithHotelPrices.flatMap((day) =>
+            day.items
+              .filter(
+                (item) => item.item_type === "ACTIVITY" || item.item_type === "SIGHTSEEING",
+              )
+              .map((item) => ({ dayId: day.id, item })),
+          );
+          void Promise.all(
+            importedActivities.map(async ({ dayId, item }) => {
+              const details = await fetchSupplierActivityDetails(item, generated.draft.destination);
+              if (!details) return;
+              setDays((current) =>
+                current.map((day) =>
+                  day.id !== dayId
+                    ? day
+                    : {
+                        ...day,
+                        items: day.items.map((currentItem) =>
+                          currentItem.id === item.id
+                            ? {
+                                ...currentItem,
+                                metadata: {
+                                  ...(currentItem.metadata ?? {}),
+                                  ...(details.metadata ?? {}),
+                                },
+                              }
+                            : currentItem,
+                        ),
+                      },
+                ),
+              );
+            }),
+          );
           sessionStorage.removeItem("itinerary-supplier-draft");
           setMessage(
             "AI itinerary generated and displayed. Review it in the editor, then save when ready.",

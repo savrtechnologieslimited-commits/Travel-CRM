@@ -41,3 +41,6 @@ apps/wacrm/.next/
 *.sw?
 
 .vercel
+.env*.local
+buildlog.txt
+*.log

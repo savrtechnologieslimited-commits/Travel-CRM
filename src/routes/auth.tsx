@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AlertCircle, ArrowLeft, Globe2, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { signInWithLoginIdFn } from "@/lib/team-members";
 import { Button } from "@/components/ui/button";
@@ -104,13 +104,11 @@ function AuthPage() {
         <div className="absolute -top-36 -left-32 size-[30rem] rounded-full bg-teal-400/10 blur-3xl" />
         <div className="absolute -right-40 -bottom-44 size-[34rem] rounded-full bg-amber-300/10 blur-3xl" />
         <div className="relative flex items-center gap-3">
-          <div className="grid size-12 place-items-center rounded-2xl bg-amber-400 text-[#073b3b] shadow-lg shadow-black/10">
-            <Globe2 className="size-6" />
-          </div>
-          <div>
-            <p className="font-display text-lg font-bold tracking-tight">SAVR Travels</p>
-            <p className="text-xs text-teal-100/70">Travel Operations OS</p>
-          </div>
+          <img
+            src="/savr-logo.png"
+            alt="SAVR Technologies - CRM solutions for a smarter tomorrow"
+            className="w-56 rounded-lg"
+          />
         </div>
         <div className="relative max-w-xl py-16">
           <p className="mb-5 text-xs font-semibold tracking-[0.24em] text-amber-300 uppercase">Staff workspace</p>
@@ -134,11 +132,11 @@ function AuthPage() {
         <Card className="relative w-full max-w-[440px] rounded-3xl border-white/80 bg-white/95 p-1 shadow-[0_24px_80px_-36px_rgba(7,59,59,0.28)] backdrop-blur">
           <CardHeader className="px-7 pt-8 pb-2 sm:px-9 sm:pt-10">
             <div className="mb-7 flex items-center gap-3 lg:hidden">
-              <div className="grid size-11 place-items-center rounded-xl bg-[#073b3b] text-amber-300"><Globe2 className="size-5" /></div>
-              <div>
-                <p className="font-display font-bold text-[#073b3b]">SAVR Travels</p>
-                <p className="text-xs text-muted-foreground">Travel Operations OS</p>
-              </div>
+              <img
+                src="/savr-logo.png"
+                alt="SAVR Technologies - CRM solutions for a smarter tomorrow"
+                className="w-48 rounded-lg"
+              />
             </div>
             <p className="mb-2 text-xs font-semibold tracking-[0.18em] text-teal-700 uppercase">Welcome back</p>
             <CardTitle className="font-display text-3xl font-semibold tracking-tight text-slate-900">

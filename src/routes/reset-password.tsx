@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { AlertCircle, Globe2, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -81,15 +81,11 @@ function ResetPasswordPage() {
     <div className="grid min-h-screen place-items-center p-6">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <div className="mb-2 flex items-center gap-3">
-            <div className="grid size-10 place-items-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
-              <Globe2 className="size-5" />
-            </div>
-            <div>
-              <p className="font-display font-semibold">SAVR Travels</p>
-              <p className="text-xs text-muted-foreground">Travel Operations OS</p>
-            </div>
-          </div>
+          <img
+            src="/savr-logo.png"
+            alt="SAVR Technologies - CRM solutions for a smarter tomorrow"
+            className="mb-2 w-48 rounded-lg"
+          />
           <CardTitle className="font-display text-xl">Set a new password</CardTitle>
           <CardDescription>Choose a new password for your staff account.</CardDescription>
         </CardHeader>

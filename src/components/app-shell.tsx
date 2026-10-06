@@ -11,7 +11,6 @@ import {
   Wallet,
   Menu,
   LogOut,
-  Globe2,
   Building2,
   Package,
   UsersRound,
@@ -143,13 +142,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           )}
         >
           <div className="flex items-center gap-3 px-5 py-5">
-            <div className="grid size-10 place-items-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
-              <Globe2 className="size-5" />
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="font-display text-base leading-tight font-semibold">SAVR Travels</p>
-              <p className="text-xs text-sidebar-foreground/60">Travel Operations OS</p>
-            </div>
+            <img
+              src="/savr-logo.png"
+              alt="SAVR Technologies - CRM solutions for a smarter tomorrow"
+              className="w-[166px] shrink-0 rounded-md"
+            />
             <Button
               variant="ghost"
               size="icon"

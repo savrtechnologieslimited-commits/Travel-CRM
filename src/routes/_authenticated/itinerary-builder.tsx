@@ -4360,6 +4360,8 @@ function ItineraryBuilderPage() {
           : DEFAULT_ITINERARY_TERMS.terms_conditions,
   };
   const [days, setDays] = useState<TripDay[]>([{ ...EMPTY_DAY }]);
+  const [quickPreviewDraftReady, setQuickPreviewDraftReady] = useState(false);
+  const addImagesToSavedItineraryRef = useRef<(() => Promise<void>) | null>(null);
   const [currentItineraryId, setCurrentItineraryId] = useState<string | null>(null);
   const savedTermsSnapshotRef = useRef<ReturnType<typeof buildItineraryTermsSnapshot> | null>(null);
   const recoveredDraftRef = useRef(false);
@@ -5923,6 +5925,8 @@ function ItineraryBuilderPage() {
     }
   }
 
+  addImagesToSavedItineraryRef.current = addImagesToSavedItinerary;
+
   async function generateShareLink() {
     if (!currentItineraryId) {
       setMessage("Save the itinerary before creating a customer share link.");
@@ -6352,18 +6356,24 @@ function ItineraryBuilderPage() {
     }
   }
 
-  async function extractSupplierDraftFromText(sourceText: string) {
+  async function extractSupplierDraftFromText(
+    sourceText: string,
+    options?: { destinationText?: string; quickPreview?: boolean },
+  ) {
     setSaving(true);
     setMessage(null);
     try {
-      const destinationText = destinationName?.trim();
+      const destinationText = options?.destinationText?.trim() || destinationName?.trim();
       const extracted = await extractSupplier({
         data: { sourceText, ...(destinationText ? { destinationText } : {}) },
       });
       sessionStorage.setItem("itinerary-supplier-draft", JSON.stringify(extracted));
-      window.location.assign(
-        `/itinerary-builder?supplierDraft=1${form.lead_id ? `&leadId=${encodeURIComponent(form.lead_id)}` : ""}`,
-      );
+      const params = new URLSearchParams({
+        supplierDraft: "1",
+        ...(options?.quickPreview ? { quickPreview: "1" } : {}),
+      });
+      if (form.lead_id) params.set("leadId", form.lead_id);
+      window.location.assign(`/itinerary-builder?${params.toString()}`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to import supplier itinerary.");
     } finally {
@@ -6484,9 +6494,15 @@ function ItineraryBuilderPage() {
     fileName?: string;
     mimeType?: string;
     fileBase64?: string;
-  }) {
+  }, options?: { quickPreview?: boolean }) {
     const extractedText = await extractSupplierTextFromFile(input);
-    if (extractedText) await extractSupplierDraftFromText(extractedText);
+    if (extractedText)
+      await extractSupplierDraftFromText(extractedText, {
+        ...(input.destinationText ? { destinationText: input.destinationText } : {}),
+        ...(options?.quickPreview !== undefined
+          ? { quickPreview: options.quickPreview }
+          : {}),
+      });
   }
 
   async function loadSavedItinerary(
@@ -6905,18 +6921,49 @@ function ItineraryBuilderPage() {
             destination?: string;
           };
           if (upload.name && upload.base64) {
-            void extractSupplierDraft({
-              fileName: upload.name,
-              mimeType: upload.type || "application/octet-stream",
-              fileBase64: upload.base64,
-              ...(upload.destination ? { destinationText: upload.destination } : {}),
-            });
+            void extractSupplierDraft(
+              {
+                fileName: upload.name,
+                mimeType: upload.type || "application/octet-stream",
+                fileBase64: upload.base64,
+                ...(upload.destination ? { destinationText: upload.destination } : {}),
+              },
+              { quickPreview: params.get("quickPreview") === "1" },
+            );
+          } else {
+            setMessage("The selected quick-itinerary file is incomplete. Please choose it again.");
           }
         } catch {
           setMessage(
             "The selected quick-itinerary file could not be prepared. Please choose it again.",
           );
         }
+      } else {
+        setMessage("The selected quick-itinerary file was not found. Please choose it again.");
+      }
+    }
+    if (params.get("quickText") === "1") {
+      const storedText = sessionStorage.getItem("itinerary-quick-text");
+      sessionStorage.removeItem("itinerary-quick-text");
+      if (storedText) {
+        try {
+          const quickInput = JSON.parse(storedText) as {
+            text?: string;
+            destination?: string;
+          };
+          if (quickInput.text?.trim()) {
+            void extractSupplierDraftFromText(quickInput.text, {
+              ...(quickInput.destination ? { destinationText: quickInput.destination } : {}),
+              quickPreview: params.get("quickPreview") === "1",
+            });
+          } else {
+            setMessage("Enter itinerary details before generating a quick itinerary.");
+          }
+        } catch {
+          setMessage("The quick-itinerary text could not be prepared. Please try again.");
+        }
+      } else {
+        setMessage("The quick-itinerary text was not found. Please paste the details again.");
       }
     }
     const bookingDraftRequested = new URLSearchParams(window.location.search).get("bookingDraft");
@@ -7110,8 +7157,12 @@ function ItineraryBuilderPage() {
           ) {
             setHotelsEnabled(true);
             setHotelBookingMode("overall");
-            setActiveSection("hotels");
-            setHotelsDialogOpen(true);
+            const quickPreview =
+              new URLSearchParams(window.location.search).get("quickPreview") === "1";
+            if (!quickPreview) {
+              setActiveSection("hotels");
+              setHotelsDialogOpen(true);
+            }
             const importedHotels = generatedDaysWithHotelPrices.flatMap((day) =>
               day.items
                 .filter((item) => item.item_type === "ACCOMMODATION")
@@ -7178,9 +7229,14 @@ function ItineraryBuilderPage() {
               );
             }),
           );
+          if (new URLSearchParams(window.location.search).get("quickPreview") === "1") {
+            setQuickPreviewDraftReady(true);
+          }
           sessionStorage.removeItem("itinerary-supplier-draft");
           setMessage(
-            "AI itinerary generated and displayed. Review it in the editor, then save when ready.",
+            new URLSearchParams(window.location.search).get("quickPreview") === "1"
+              ? "Quick itinerary generated. Preparing images and preview…"
+              : "AI itinerary generated and displayed. Review it in the editor, then save when ready.",
           );
         } catch {
           setMessage("The supplier draft could not be loaded.");
@@ -7273,6 +7329,24 @@ function ItineraryBuilderPage() {
     companyTermDefaults.terms_conditions,
     fetchSupplierHotelDetails,
   ]);
+
+  useEffect(() => {
+    if (!quickPreviewDraftReady || addingImages) return;
+    setQuickPreviewDraftReady(false);
+    const enrichImages = addImagesToSavedItineraryRef.current;
+    if (!enrichImages) {
+      setMessage("Quick itinerary is ready to review, but images could not be prepared.");
+      setPreviewOpen(true);
+      return;
+    }
+    void enrichImages().then(() => {
+      setActiveSection("day");
+      setPreviewOpen(true);
+      setMessage(
+        "Quick itinerary is ready. Review the preview and any image-enrichment alerts.",
+      );
+    });
+  }, [addingImages, days, form, quickPreviewDraftReady]);
 
   useEffect(() => {
     let cancelled = false;

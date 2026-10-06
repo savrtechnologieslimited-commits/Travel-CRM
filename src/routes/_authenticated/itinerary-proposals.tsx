@@ -377,7 +377,15 @@ function CreateItineraryDialog() {
     if (Boolean(prompt.trim()) === Boolean(file)) return;
     const params = new URLSearchParams({ draftId: crypto.randomUUID(), newItinerary: "1" });
     if (prompt.trim()) {
-      params.set("quickPrompt", prompt.trim());
+      try {
+        sessionStorage.setItem(
+          "itinerary-quick-text",
+          JSON.stringify({ text: prompt.trim(), destination: title.trim() }),
+        );
+      } catch {
+        return;
+      }
+      params.set("quickText", "1");
     } else if (file) {
       if (file.size > 3_000_000) return;
       const bytes = new Uint8Array(await file.arrayBuffer());
@@ -392,6 +400,8 @@ function CreateItineraryDialog() {
       }
       params.set("quickUpload", "1");
     }
+    params.set("quickPreview", "1");
+    if (title.trim()) params.set("title", title.trim());
     window.location.assign(`${CREATE_ITINERARY_HREF}?${params.toString()}`);
   }
 

@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { NotificationBell } from "@/components/notification-bell";
+import { QuickItineraryManager } from "@/components/quick-itinerary-manager";
 import { CurrencyConverterDialog, CurrencyRatesProvider } from "@/components/currency-converter";
 import { useFollowUpReminders } from "@/lib/followup-data";
 import { useCurrentUserTabPermissions } from "@/lib/admin-data";
@@ -273,6 +274,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </main>
         </div>
       </div>
+      <QuickItineraryManager />
     </CurrencyRatesProvider>
   );
 }

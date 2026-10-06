@@ -5,6 +5,7 @@ import { dedupeItineraryDraftRows, useDeleteItineraryDraft, useItineraryDraftWor
 import { formatDate } from "@/lib/crm";
 import { shiftIsoDate, totalCityStayNights } from "@/lib/itinerary-day-dates";
 import { PageHeader } from "@/components/app-shell";
+import { QUICK_ITINERARY_REQUEST_EVENT } from "@/lib/quick-itinerary";
 import { DestinationInput } from "@/components/destination-input";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -327,6 +328,7 @@ function CreateItineraryDialog() {
   const [cityStays, setCityStays] = useState<CityStayInput[]>([]);
   const [prompt, setPrompt] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [quickInputError, setQuickInputError] = useState("");
   const totalNights = totalCityStayNights(cityStays.map((stay) => stay.nights));
 
   function updateCityStayNights(stayId: string, nights: string) {
@@ -375,34 +377,46 @@ function CreateItineraryDialog() {
 
   async function generateQuickItinerary() {
     if (Boolean(prompt.trim()) === Boolean(file)) return;
-    const params = new URLSearchParams({ draftId: crypto.randomUUID(), newItinerary: "1" });
     if (prompt.trim()) {
-      try {
-        sessionStorage.setItem(
-          "itinerary-quick-text",
-          JSON.stringify({ text: prompt.trim(), destination: title.trim() }),
-        );
-      } catch {
-        return;
-      }
-      params.set("quickText", "1");
-    } else if (file) {
-      if (file.size > 3_000_000) return;
+      setQuickInputError("");
+      window.dispatchEvent(
+        new CustomEvent(QUICK_ITINERARY_REQUEST_EVENT, {
+          detail: { sourceText: prompt.trim(), destinationText: title.trim() },
+        }),
+      );
+      setOpen(false);
+      return;
+    }
+    if (!file) return;
+    if (file.size > 3_000_000) {
+      setQuickInputError("Files must be under 3 MB. Please select a smaller file.");
+      return;
+    }
+    try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       let binary = "";
       for (let index = 0; index < bytes.length; index += 0x8000) {
         binary += String.fromCharCode(...bytes.subarray(index, index + 0x8000));
       }
-      try {
-        sessionStorage.setItem("itinerary-quick-upload", JSON.stringify({ name: file.name, type: file.type, base64: btoa(binary), destination: title.trim() }));
-      } catch {
-        return;
-      }
-      params.set("quickUpload", "1");
+      window.dispatchEvent(
+        new CustomEvent(QUICK_ITINERARY_REQUEST_EVENT, {
+          detail: {
+            fileName: file.name,
+            mimeType: file.type || "application/octet-stream",
+            fileBase64: btoa(binary),
+            destinationText: title.trim(),
+          },
+        }),
+      );
+      setQuickInputError("");
+      setOpen(false);
+    } catch (error) {
+      setQuickInputError(
+        error instanceof Error
+          ? `Could not read the selected file: ${error.message}`
+          : "Could not read the selected file. Please try again.",
+      );
     }
-    params.set("quickPreview", "1");
-    if (title.trim()) params.set("title", title.trim());
-    window.location.assign(`${CREATE_ITINERARY_HREF}?${params.toString()}`);
   }
 
   return (
@@ -444,9 +458,13 @@ function CreateItineraryDialog() {
           {Number(children) > 0 && <div className="space-y-1.5"><label htmlFor="new-itinerary-child-ages" className="text-sm font-medium">Children age</label><Input id="new-itinerary-child-ages" value={childAges} onChange={(event) => setChildAges(event.target.value)} placeholder="e.g., 8, 9" /></div>}
           <DialogFooter><Button type="button" className="bg-teal-700 text-white hover:bg-teal-800" onClick={openBuilder}>Create Itinerary</Button></DialogFooter>
         </div> : <div className="space-y-4 py-1">
-          <p className="text-sm text-muted-foreground">Create an itinerary quickly from a prompt or an uploaded file. Use only one of those two fields.</p>
-          <div className="space-y-1.5"><label htmlFor="quick-itinerary-prompt" className="text-sm font-medium">Prompt</label><Textarea id="quick-itinerary-prompt" value={prompt} onChange={(event) => { setPrompt(event.target.value); if (event.target.value) setFile(null); }} placeholder="Paste itinerary details, inclusions, hotels, day plan..." className="min-h-36 resize-y" /></div>
-          <div className="space-y-1.5"><label htmlFor="quick-itinerary-file" className="text-sm font-medium">Upload file</label><Input id="quick-itinerary-file" type="file" accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown" onChange={(event) => { const selectedFile = event.target.files?.[0] ?? null; setFile(selectedFile); if (selectedFile) setPrompt(""); }} /><p className="text-xs text-muted-foreground">PDF, DOCX, or TXT. Either prompt or file is required. Files must be under 3 MB.</p></div>
+          <p className="text-sm text-muted-foreground">
+            Create an itinerary from a prompt or an uploaded file. Preparation runs in a movable,
+            minimizable panel while you continue using the CRM; the preview opens when it is ready.
+          </p>
+          <div className="space-y-1.5"><label htmlFor="quick-itinerary-prompt" className="text-sm font-medium">Prompt</label><Textarea id="quick-itinerary-prompt" value={prompt} onChange={(event) => { setPrompt(event.target.value); setQuickInputError(""); if (event.target.value) setFile(null); }} placeholder="Paste itinerary details, inclusions, hotels, day plan..." className="min-h-36 resize-y" /></div>
+          <div className="space-y-1.5"><label htmlFor="quick-itinerary-file" className="text-sm font-medium">Upload file</label><Input id="quick-itinerary-file" type="file" accept=".pdf,.docx,.txt,.md,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain,text/markdown" onChange={(event) => { const selectedFile = event.target.files?.[0] ?? null; setFile(selectedFile); setQuickInputError(""); if (selectedFile) setPrompt(""); }} /><p className="text-xs text-muted-foreground">PDF, DOCX, or TXT. Either prompt or file is required. Files must be under 3 MB.</p></div>
+          {quickInputError && <p role="alert" className="text-sm text-destructive">{quickInputError}</p>}
           <div className="flex justify-end pt-2"><Button type="button" className="bg-[#151515] text-white hover:bg-black" disabled={Boolean(prompt.trim()) === Boolean(file) || Boolean(file && file.size > 3_000_000)} onClick={() => void generateQuickItinerary()}><Sparkles className="mr-2 size-4" />Generate Quick Itinerary</Button></div>
         </div>}
       </DialogContent>

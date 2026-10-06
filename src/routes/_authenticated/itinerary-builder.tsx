@@ -11321,28 +11321,8 @@ function ItineraryBuilderPage() {
                   </summary>
                   <div className="space-y-2 border-t border-slate-200 p-2">
                     {marginLines.map((line, index) => (
-                      <div key={line.id} className="space-y-2">
-                        <div className="flex items-center justify-between rounded-md bg-emerald-50 px-2.5 py-2 text-sm text-slate-900">
-                          <span>
-                            Margin :{" "}
-                            {marginTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-rose-500 hover:text-rose-700"
-                            onClick={() =>
-                              setMarginLines((current) =>
-                                current.filter((_, lineIndex) => lineIndex !== index),
-                              )
-                            }
-                            aria-label="Remove margin line"
-                          >
-                            ×
-                          </Button>
-                        </div>
-                        <div className="grid grid-cols-[minmax(0,1fr)_90px_110px] gap-2">
+                      <div key={line.id}>
+                        <div className="grid grid-cols-[minmax(0,1fr)_90px_110px_32px] gap-2">
                           <Input
                             value={line.detail}
                             onChange={(event) =>
@@ -11408,6 +11388,20 @@ function ItineraryBuilderPage() {
                             placeholder="Amount"
                             className="h-9 bg-white text-sm"
                           />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-8 text-rose-500 hover:text-rose-700"
+                            onClick={() =>
+                              setMarginLines((current) =>
+                                current.filter((_, lineIndex) => lineIndex !== index),
+                              )
+                            }
+                            aria-label="Remove margin line"
+                          >
+                            ×
+                          </Button>
                         </div>
                       </div>
                     ))}
@@ -11445,27 +11439,8 @@ function ItineraryBuilderPage() {
                   </summary>
                   <div className="space-y-2 border-t border-slate-200 p-2">
                     {taxLines.map((line, index) => (
-                      <div key={line.id} className="space-y-2">
-                        <div className="flex items-center justify-between rounded-md bg-emerald-50 px-2.5 py-2 text-sm text-slate-900">
-                          <span>
-                            GST : {taxTotal.toLocaleString("en-IN", { maximumFractionDigits: 2 })}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon"
-                            className="h-7 w-7 text-rose-500 hover:text-rose-700"
-                            onClick={() =>
-                              setTaxLines((current) =>
-                                current.filter((_, lineIndex) => lineIndex !== index),
-                              )
-                            }
-                            aria-label="Remove tax line"
-                          >
-                            ×
-                          </Button>
-                        </div>
-                        <div className="grid grid-cols-[minmax(0,1fr)_90px_110px] gap-2">
+                      <div key={line.id}>
+                        <div className="grid grid-cols-[minmax(0,1fr)_90px_110px_32px] gap-2">
                           <Input
                             value={line.detail}
                             onChange={(event) =>
@@ -11532,6 +11507,20 @@ function ItineraryBuilderPage() {
                             placeholder="Amount"
                             className="h-9 bg-white text-sm"
                           />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-9 w-8 text-rose-500 hover:text-rose-700"
+                            onClick={() =>
+                              setTaxLines((current) =>
+                                current.filter((_, lineIndex) => lineIndex !== index),
+                              )
+                            }
+                            aria-label="Remove tax line"
+                          >
+                            ×
+                          </Button>
                         </div>
                       </div>
                     ))}

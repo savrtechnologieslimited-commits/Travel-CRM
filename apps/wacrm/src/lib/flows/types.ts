@@ -183,7 +183,7 @@ export interface CollectInputNodeConfig {
    */
   var_key: string;
   /**
-   * When omitted, an explicit YYYY-MM-DD format in the prompt is
+   * When omitted, an explicit DD-MM-YYYY format in the prompt is
    * enforced automatically; other prompts accept any non-empty text.
    */
   validation?: "any" | "email" | "phone" | "date" | "regex";

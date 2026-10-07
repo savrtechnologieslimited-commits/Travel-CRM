@@ -12,20 +12,60 @@ import { createClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
-function matchError(message: string, status: number) {
+function getCorsHeaders(request: NextRequest): Record<string, string> {
+  const origin = request.headers.get('origin');
+  const allowedOrigin = process.env.CRM_ORIGIN;
+  if (
+    !origin ||
+    !allowedOrigin ||
+    allowedOrigin === '*' ||
+    origin !== allowedOrigin
+  ) {
+    return {};
+  }
+  return {
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Headers': 'content-type, x-crm-origin',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Max-Age': '600',
+    Vary: 'Origin',
+  };
+}
+
+function matchError(request: NextRequest, message: string, status: number) {
   return NextResponse.json(
     { error: message },
-    { status, headers: { 'Cache-Control': 'no-store' } }
+    {
+      status,
+      headers: { 'Cache-Control': 'no-store', ...getCorsHeaders(request) },
+    }
   );
 }
 
+export async function OPTIONS(request: NextRequest) {
+  const headers = getCorsHeaders(request);
+  if (!headers['Access-Control-Allow-Origin']) {
+    return new NextResponse(null, {
+      status: 403,
+      headers: { 'Cache-Control': 'no-store', Vary: 'Origin' },
+    });
+  }
+  return new NextResponse(null, { status: 204, headers });
+}
+
 export async function POST(request: NextRequest) {
+  const corsHeaders = getCorsHeaders(request);
   const contentLength = request.headers.get('content-length');
   if (
     contentLength &&
     (!/^\d+$/.test(contentLength) || Number(contentLength) > 8192)
   ) {
-    return matchError('The CRM contact-match request is too large.', 413);
+    return matchError(
+      request,
+      'The CRM contact-match request is too large.',
+      413
+    );
   }
 
   if (
@@ -34,21 +74,25 @@ export async function POST(request: NextRequest) {
       ?.toLowerCase()
       .startsWith('application/json')
   ) {
-    return matchError('Expected a JSON contact-match request.', 415);
+    return matchError(request, 'Expected a JSON contact-match request.', 415);
   }
 
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return matchError('The CRM contact-match request is invalid.', 400);
+    return matchError(
+      request,
+      'The CRM contact-match request is invalid.',
+      400
+    );
   }
   if (!body || typeof body !== 'object' || !('token' in body)) {
-    return matchError('The CRM contact-match token is missing.', 400);
+    return matchError(request, 'The CRM contact-match token is missing.', 400);
   }
   const token = body.token;
   if (typeof token !== 'string' || !token) {
-    return matchError('The CRM contact-match token is missing.', 400);
+    return matchError(request, 'The CRM contact-match token is missing.', 400);
   }
 
   let claims;
@@ -61,18 +105,36 @@ export async function POST(request: NextRequest) {
     );
   } catch (error) {
     if (error instanceof InvalidBridgeTokenError) {
-      return matchError(error.message, 401);
+      return matchError(request, error.message, 401);
     }
     if (error instanceof BridgeConfigurationError) {
       console.error(
         '[POST /api/crm/contact-match] bridge secret is not configured.'
       );
-      return matchError('WACRM contact matching is not configured.', 503);
+      return matchError(
+        request,
+        'WACRM contact matching is not configured.',
+        503
+      );
     }
     throw error;
   }
   if (claims.purpose !== 'contact-match' || !claims.record) {
-    return matchError('This token cannot be used for contact matching.', 401);
+    return matchError(
+      request,
+      'This token cannot be used for contact matching.',
+      401
+    );
+  }
+  if (
+    request.headers.get('origin') !== new URL(request.url).origin &&
+    !corsHeaders['Access-Control-Allow-Origin']
+  ) {
+    return matchError(
+      request,
+      'This CRM origin is not allowed to read WACRM messages.',
+      403
+    );
   }
 
   const admin = supabaseAdmin();
@@ -84,6 +146,7 @@ export async function POST(request: NextRequest) {
   const requiresActiveWacrmSession = request.headers.has('x-crm-origin');
   if (requiresActiveWacrmSession && (sessionError || !activeWacrmUser)) {
     return matchError(
+      request,
       'Sign in to the WACRM account that contains this conversation, then retry.',
       401
     );
@@ -98,10 +161,15 @@ export async function POST(request: NextRequest) {
       '[POST /api/crm/contact-match] failed to consume contact-match nonce:',
       nonceResult.error
     );
-    return matchError('WACRM could not complete contact matching.', 500);
+    return matchError(
+      request,
+      'WACRM could not complete contact matching.',
+      500
+    );
   }
   if (!nonceResult.ok) {
     return matchError(
+      request,
       'This CRM contact-match request has already been used.',
       401
     );
@@ -124,10 +192,18 @@ export async function POST(request: NextRequest) {
       '[POST /api/crm/contact-match] failed to resolve WACRM account:',
       profileError
     );
-    return matchError('WACRM could not complete contact matching.', 500);
+    return matchError(
+      request,
+      'WACRM could not complete contact matching.',
+      500
+    );
   }
   if (!profile?.account_id) {
-    return matchError('Sign in to WACRM once before matching contacts.', 409);
+    return matchError(
+      request,
+      'Sign in to WACRM once before matching contacts.',
+      409
+    );
   }
 
   const record = claims.record;
@@ -154,7 +230,11 @@ export async function POST(request: NextRequest) {
       '[POST /api/crm/contact-match] failed to look up WACRM contacts:',
       emailResult.error ?? phoneResult.error
     );
-    return matchError('WACRM could not complete contact matching.', 500);
+    return matchError(
+      request,
+      'WACRM could not complete contact matching.',
+      500
+    );
   }
 
   const emailContacts = emailResult.data ?? [];
@@ -176,7 +256,46 @@ export async function POST(request: NextRequest) {
       '[POST /api/crm/contact-match] failed to look up matching conversations:',
       conversationsError
     );
-    return matchError('WACRM could not complete contact matching.', 500);
+    return matchError(
+      request,
+      'WACRM could not complete contact matching.',
+      500
+    );
+  }
+
+  const conversationsByContact = new Map<string, typeof conversations>();
+  for (const conversation of conversations ?? []) {
+    const existing = conversationsByContact.get(conversation.contact_id) ?? [];
+    existing.push(conversation);
+    conversationsByContact.set(conversation.contact_id, existing);
+  }
+  const latestConversations = [...candidates.values()]
+    .map((contact) => conversationsByContact.get(contact.id)?.[0])
+    .filter((conversation) => conversation !== undefined);
+  const messageResults = await Promise.all(
+    latestConversations.map(async (conversation) => ({
+      conversationId: conversation.id,
+      ...(await admin
+        .from('messages')
+        .select(
+          'id,conversation_id,sender_type,content_type,content_text,media_url,template_name,status,created_at'
+        )
+        .eq('conversation_id', conversation.id)
+        .order('created_at', { ascending: false })
+        .limit(1000)),
+    }))
+  );
+  const failedMessageResult = messageResults.find((result) => result.error);
+  if (failedMessageResult?.error) {
+    console.error(
+      '[POST /api/crm/contact-match] failed to load matched conversation messages:',
+      failedMessageResult.error
+    );
+    return matchError(
+      request,
+      'WACRM could not load the matching conversation.',
+      500
+    );
   }
 
   return NextResponse.json(
@@ -188,11 +307,16 @@ export async function POST(request: NextRequest) {
       ),
       candidates: [...candidates.values()].map((contact) => ({
         ...contact,
-        conversations: (conversations ?? []).filter(
-          (conversation) => conversation.contact_id === contact.id
-        ),
+        conversations:
+          conversationsByContact.get(contact.id)?.slice(0, 1) ?? [],
       })),
+      messages: messageResults.flatMap((result) =>
+        (result.data ?? []).reverse()
+      ),
+      historyMayBeLimitedConversationIds: messageResults
+        .filter((result) => (result.data ?? []).length === 1000)
+        .map((result) => result.conversationId),
     },
-    { headers: { 'Cache-Control': 'no-store' } }
+    { headers: { 'Cache-Control': 'no-store', ...corsHeaders } }
   );
 }

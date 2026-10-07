@@ -271,10 +271,11 @@ export const createWacrmContactMatchHandoffFn = createServerFn({ method: "POST" 
         phones,
       },
     });
-    const target = new URL("/inbox", wacrmAppUrl);
-    target.searchParams.set("crm_match_token", token);
-    target.searchParams.set("crm_match_issuer", origin);
-    return { url: target.toString() };
+    return {
+      apiUrl: new URL("/api/crm/contact-match", wacrmAppUrl).toString(),
+      issuer: origin,
+      token,
+    };
   });
 
 function isHttpOrigin(value: string): boolean {

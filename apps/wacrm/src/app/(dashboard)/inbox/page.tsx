@@ -1,32 +1,36 @@
-"use client";
+'use client';
 
-import { Suspense, useState, useCallback, useEffect, useRef } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { useTranslations } from "next-intl";
-import { createClient } from "@/lib/supabase/client";
+import { Suspense, useState, useCallback, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useTranslations } from 'next-intl';
+import { createClient } from '@/lib/supabase/client';
 import {
   CONVERSATION_SELECT,
   normalizeConversation,
-} from "@/lib/inbox/conversations";
-import type { Conversation, Message, Contact, ConversationStatus } from "@/types";
-import { useRealtime } from "@/hooks/use-realtime";
-import { ConversationList } from "@/components/inbox/conversation-list";
-import { MessageThread } from "@/components/inbox/message-thread";
-import { ContactSidebar } from "@/components/inbox/contact-sidebar";
+} from '@/lib/inbox/conversations';
+import type {
+  Conversation,
+  Message,
+  Contact,
+  ConversationStatus,
+} from '@/types';
+import { useRealtime } from '@/hooks/use-realtime';
+import { ConversationList } from '@/components/inbox/conversation-list';
+import { MessageThread } from '@/components/inbox/message-thread';
+import { ContactSidebar } from '@/components/inbox/contact-sidebar';
 import {
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
-} from "@/components/ui/dialog";
-import { toast } from "sonner";
-import { WifiOff } from "lucide-react";
-import { cn } from "@/lib/utils";
+} from '@/components/ui/dialog';
+import { WifiOff } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 // Remembers the agent's show/hide choice for the desktop contact panel
 // across reloads and sessions (device-scoped, like the theme prefs).
-const CONTACT_PANEL_STORAGE_KEY = "wacrm:inbox:contact-panel-open";
+const CONTACT_PANEL_STORAGE_KEY = 'wacrm:inbox:contact-panel-open';
 
 type CrmMatchConversation = {
   id: string;
@@ -46,7 +50,7 @@ type CrmMatchResponse = {
 };
 
 function isCrmMatchResponse(value: unknown): value is CrmMatchResponse {
-  if (!value || typeof value !== "object" || !("candidates" in value)) {
+  if (!value || typeof value !== 'object' || !('candidates' in value)) {
     return false;
   }
 
@@ -55,27 +59,27 @@ function isCrmMatchResponse(value: unknown): value is CrmMatchResponse {
     value.candidates.every(
       (candidate: unknown): candidate is CrmMatchContact =>
         candidate !== null &&
-        typeof candidate === "object" &&
-        "id" in candidate &&
-        typeof candidate.id === "string" &&
-        "name" in candidate &&
-        (typeof candidate.name === "string" || candidate.name === null) &&
-        "phone" in candidate &&
-        typeof candidate.phone === "string" &&
-        "conversations" in candidate &&
+        typeof candidate === 'object' &&
+        'id' in candidate &&
+        typeof candidate.id === 'string' &&
+        'name' in candidate &&
+        (typeof candidate.name === 'string' || candidate.name === null) &&
+        'phone' in candidate &&
+        typeof candidate.phone === 'string' &&
+        'conversations' in candidate &&
         Array.isArray(candidate.conversations) &&
         candidate.conversations.every(
           (conversation: unknown): conversation is CrmMatchConversation =>
             conversation !== null &&
-            typeof conversation === "object" &&
-            "id" in conversation &&
-            typeof conversation.id === "string" &&
-            "status" in conversation &&
-            typeof conversation.status === "string" &&
-            "last_message_at" in conversation &&
-            (typeof conversation.last_message_at === "string" ||
-              conversation.last_message_at === null),
-        ),
+            typeof conversation === 'object' &&
+            'id' in conversation &&
+            typeof conversation.id === 'string' &&
+            'status' in conversation &&
+            typeof conversation.status === 'string' &&
+            'last_message_at' in conversation &&
+            (typeof conversation.last_message_at === 'string' ||
+              conversation.last_message_at === null)
+        )
     )
   );
 }
@@ -92,7 +96,7 @@ export default function InboxPage() {
 }
 
 function InboxPageInner() {
-  const t = useTranslations("Inbox.page");
+  const t = useTranslations('Inbox.page');
   const router = useRouter();
   const searchParams = useSearchParams();
   /**
@@ -100,9 +104,9 @@ function InboxPageInner() {
    * dashboard's recent-conversations list so the right thread opens
    * automatically instead of showing the empty center panel.
    */
-  const deepLinkConvId = searchParams.get("c");
-  const crmMatchToken = searchParams.get("crm_match_token");
-  const crmMatchIssuer = searchParams.get("crm_match_issuer");
+  const deepLinkConvId = searchParams.get('c');
+  const crmMatchToken = searchParams.get('crm_match_token');
+  const crmMatchIssuer = searchParams.get('crm_match_issuer');
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversation, setActiveConversation] =
@@ -138,7 +142,7 @@ function InboxPageInner() {
   useEffect(() => {
     try {
       const stored = localStorage.getItem(CONTACT_PANEL_STORAGE_KEY);
-      if (stored !== null) setContactPanelOpen(stored === "true");
+      if (stored !== null) setContactPanelOpen(stored === 'true');
     } catch {
       // localStorage can throw in private-browsing / sandboxed contexts.
     }
@@ -168,63 +172,80 @@ function InboxPageInner() {
     if (handledCrmMatchRef.current === matchKey) return;
     handledCrmMatchRef.current = matchKey;
 
-    router.replace("/inbox", { scroll: false });
+    router.replace('/inbox', { scroll: false });
     setCrmMatchError(null);
     setCrmMatchCandidates(null);
 
-    void fetch("/api/crm/contact-match", {
-      method: "POST",
+    void fetch('/api/crm/contact-match', {
+      method: 'POST',
       headers: {
-        "content-type": "application/json",
-        "x-crm-origin": crmMatchIssuer,
+        'content-type': 'application/json',
+        'x-crm-origin': crmMatchIssuer,
       },
       body: JSON.stringify({ token: crmMatchToken }),
-      cache: "no-store",
+      cache: 'no-store',
     })
       .then(async (response) => {
         const body: unknown = await response.json();
         if (!response.ok) {
           const message =
             body &&
-            typeof body === "object" &&
-            "error" in body &&
-            typeof body.error === "string"
+            typeof body === 'object' &&
+            'error' in body &&
+            typeof body.error === 'string'
               ? body.error
-              : "WACRM could not match this phone number.";
+              : 'WACRM could not match this phone number.';
           throw new Error(message);
         }
         if (!isCrmMatchResponse(body)) {
-          throw new Error("WACRM returned an invalid contact-match response.");
+          throw new Error('WACRM returned an invalid contact-match response.');
         }
         return body;
       })
       .then((result) => {
         if (result.candidates.length === 0) {
-          toast.info("No matching WhatsApp conversation was found. Showing recent conversations.");
+          setCrmMatchError(
+            "No WACRM contact matches this CRM record's phone number. No other conversation was opened."
+          );
           return;
         }
 
-        const singleContact = result.candidates.length === 1 ? result.candidates[0] : null;
+        const singleContact =
+          result.candidates.length === 1 ? result.candidates[0] : null;
         const newestConversation = singleContact?.conversations[0];
         if (newestConversation) {
-          router.replace(`/inbox?c=${encodeURIComponent(newestConversation.id)}`, {
-            scroll: false,
-          });
+          router.replace(
+            `/inbox?c=${encodeURIComponent(newestConversation.id)}`,
+            {
+              scroll: false,
+            }
+          );
           return;
         }
 
         if (singleContact && singleContact.conversations.length === 0) {
-          toast.info("No WhatsApp conversation exists for this contact. Showing recent conversations.");
+          setCrmMatchError(
+            'This phone number matches a WACRM contact, but that contact has no conversations. No other conversation was opened.'
+          );
           return;
         }
 
-        setCrmMatchCandidates(result.candidates);
+        const contactsWithConversations = result.candidates.filter(
+          (contact) => contact.conversations.length > 0
+        );
+        if (contactsWithConversations.length === 0) {
+          setCrmMatchError(
+            'The matching WACRM contacts have no conversations. No other conversation was opened.'
+          );
+          return;
+        }
+        setCrmMatchCandidates(contactsWithConversations);
       })
       .catch((reason: unknown) => {
         setCrmMatchError(
           reason instanceof Error
             ? reason.message
-            : "WACRM contact matching failed.",
+            : 'WACRM contact matching failed.'
         );
       });
   }, [crmMatchIssuer, crmMatchToken, router]);
@@ -267,14 +288,14 @@ function InboxPageInner() {
     try {
       const supabase = createClient();
       const { data, error } = await supabase
-        .from("conversations")
+        .from('conversations')
         .select(CONVERSATION_SELECT)
-        .eq("id", convId)
+        .eq('id', convId)
         .maybeSingle();
       if (error) {
         // Supabase errors have non-enumerable properties — log fields
         // explicitly so the console message isn't just `{}`.
-        console.error("Failed to hydrate conversation:", {
+        console.error('Failed to hydrate conversation:', {
           message: error.message,
           details: error.details,
           hint: error.hint,
@@ -295,7 +316,7 @@ function InboxPageInner() {
           return prev.map((c) =>
             c.id === fetched.id
               ? { ...c, contact: c.contact ?? fetched.contact }
-              : c,
+              : c
           );
         }
         return [fetched, ...prev];
@@ -304,6 +325,84 @@ function InboxPageInner() {
       hydratingConvIdsRef.current.delete(convId);
     }
   }, []);
+
+  useEffect(() => {
+    if (
+      !deepLinkConvId ||
+      autoSelectedForDeepLinkRef.current === deepLinkConvId
+    ) {
+      return;
+    }
+
+    autoSelectedForDeepLinkRef.current = deepLinkConvId;
+    let cancelled = false;
+
+    const selectDeepLinkedConversation = async () => {
+      let match = conversations.find(
+        (conversation) => conversation.id === deepLinkConvId
+      );
+      if (!match) {
+        const supabase = createClient();
+        const { data, error } = await supabase
+          .from('conversations')
+          .select(CONVERSATION_SELECT)
+          .eq('id', deepLinkConvId)
+          .maybeSingle();
+
+        if (cancelled) return;
+        if (error) {
+          console.error('Failed to load the requested conversation:', {
+            message: error.message,
+            details: error.details,
+            hint: error.hint,
+            code: error.code,
+          });
+          setCrmMatchError(
+            'The matched conversation could not be loaded. No other conversation was opened.'
+          );
+          return;
+        }
+        if (!data) {
+          setCrmMatchError(
+            'The matched conversation no longer exists. No other conversation was opened.'
+          );
+          return;
+        }
+        match = normalizeConversation(data);
+      }
+
+      if (cancelled) return;
+      const resolvedMatch = match;
+      if (!resolvedMatch) {
+        setCrmMatchError(
+          'The matched conversation could not be loaded. No other conversation was opened.'
+        );
+        return;
+      }
+      setConversations((current) =>
+        current.some((conversation) => conversation.id === resolvedMatch.id)
+          ? current
+          : [resolvedMatch, ...current]
+      );
+      setActiveConversation(resolvedMatch);
+      setActiveContact(resolvedMatch.contact ?? null);
+      setMessages([]);
+      if (resolvedMatch.unread_count > 0) {
+        setConversations((current) =>
+          current.map((conversation) =>
+            conversation.id === resolvedMatch.id
+              ? { ...conversation, unread_count: 0 }
+              : conversation
+          )
+        );
+      }
+    };
+
+    void selectDeepLinkedConversation();
+    return () => {
+      cancelled = true;
+    };
+  }, [conversations, deepLinkConvId]);
 
   // Check WhatsApp connection status on mount
   useEffect(() => {
@@ -323,9 +422,9 @@ function InboxPageInner() {
       // shared inbox even though the admin had it configured.
       // Resolve account_id via the profile and query by that.
       const { data: profile } = await supabase
-        .from("profiles")
-        .select("account_id")
-        .eq("user_id", user.id)
+        .from('profiles')
+        .select('account_id')
+        .eq('user_id', user.id)
         .maybeSingle();
       const accountId = profile?.account_id as string | undefined;
       if (!accountId) {
@@ -334,12 +433,12 @@ function InboxPageInner() {
       }
 
       const { data } = await supabase
-        .from("whatsapp_config")
-        .select("status")
-        .eq("account_id", accountId)
+        .from('whatsapp_config')
+        .select('status')
+        .eq('account_id', accountId)
         .maybeSingle();
 
-      setWhatsappConnected(data?.status === "connected");
+      setWhatsappConnected(data?.status === 'connected');
     };
 
     checkConnection();
@@ -350,7 +449,7 @@ function InboxPageInner() {
     (event: { eventType: string; new: Message; old: Partial<Message> }) => {
       const newMsg = event.new;
 
-      if (event.eventType === "INSERT") {
+      if (event.eventType === 'INSERT') {
         // Add to messages if it belongs to active conversation
         if (
           activeConversation &&
@@ -361,7 +460,7 @@ function InboxPageInner() {
             if (prev.some((m) => m.id === newMsg.id)) return prev;
             // Replace optimistic message if it exists
             const withoutOptimistic = prev.filter(
-              (m) => !m.id.startsWith("temp-")
+              (m) => !m.id.startsWith('temp-')
             );
             return [...withoutOptimistic, newMsg];
           });
@@ -378,15 +477,15 @@ function InboxPageInner() {
               c.id === newMsg.conversation_id
                 ? {
                     ...c,
-                    last_message_text: newMsg.content_text ?? "",
+                    last_message_text: newMsg.content_text ?? '',
                     last_message_at: newMsg.created_at,
                     unread_count:
                       activeConversation?.id === newMsg.conversation_id
                         ? 0
                         : c.unread_count + 1,
                   }
-                : c,
-            ),
+                : c
+            )
           );
         } else {
           // First time we're seeing this conv: the conv-INSERT event
@@ -398,7 +497,7 @@ function InboxPageInner() {
         }
       }
 
-      if (event.eventType === "UPDATE") {
+      if (event.eventType === 'UPDATE') {
         // Update message status
         setMessages((prev) =>
           prev.map((m) => (m.id === newMsg.id ? { ...m, ...newMsg } : m))
@@ -417,7 +516,7 @@ function InboxPageInner() {
     }) => {
       const conv = event.new;
 
-      if (event.eventType === "INSERT") {
+      if (event.eventType === 'INSERT') {
         // Prepend immediately for snappy UX so the new conv shows in the
         // list right away, then hydrate to fill in the `contact` join
         // (realtime payloads never include joins). Skip both if we
@@ -432,7 +531,7 @@ function InboxPageInner() {
         }
       }
 
-      if (event.eventType === "UPDATE") {
+      if (event.eventType === 'UPDATE') {
         if (knownConvIdsRef.current.has(conv.id)) {
           // If this UPDATE is for the conv the user is currently viewing,
           // suppress the incoming unread_count — the user is reading it
@@ -448,8 +547,8 @@ function InboxPageInner() {
                     ...conv,
                     unread_count: isActive ? 0 : conv.unread_count,
                   }
-                : c,
-            ),
+                : c
+            )
           );
         } else {
           // UPDATE arrived before the INSERT (or after a missed INSERT)
@@ -461,9 +560,7 @@ function InboxPageInner() {
 
         // Update active conversation if it changed
         if (activeConversation && conv.id === activeConversation.id) {
-          setActiveConversation((prev) =>
-            prev ? { ...prev, ...conv } : prev
-          );
+          setActiveConversation((prev) => (prev ? { ...prev, ...conv } : prev));
         }
       }
     },
@@ -475,7 +572,7 @@ function InboxPageInner() {
   // WS was disconnected (laptop sleep, network blip, background-tab
   // throttle) are simply lost. We need a way to catch up.
   const { isConnected } = useRealtime({
-    channelName: "inbox-realtime",
+    channelName: 'inbox-realtime',
     onMessageEvent: handleMessageEvent,
     onConversationEvent: handleConversationEvent,
     enabled: true,
@@ -513,13 +610,13 @@ function InboxPageInner() {
    */
   useEffect(() => {
     const onVisibility = () => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === 'visible') {
         setResyncToken((n) => n + 1);
       }
     };
-    document.addEventListener("visibilitychange", onVisibility);
+    document.addEventListener('visibilitychange', onVisibility);
     return () => {
-      document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener('visibilitychange', onVisibility);
     };
   }, []);
 
@@ -533,51 +630,9 @@ function InboxPageInner() {
     setResyncToken((n) => n + 1);
   }, []);
 
-  const handleConversationsLoaded = useCallback(
-    (loaded: Conversation[]) => {
-      setConversations(loaded);
-      // Resolve a pending deep-link here rather than in an effect — this
-      // is an event handler, so the setState calls below are allowed by
-      // react-hooks/set-state-in-effect. Runs once per ?c=<id> URL value
-      // via the ref, so realtime refreshes of the list can't snap the
-      // user back to the deep-linked thread after they've navigated.
-      if (
-        deepLinkConvId &&
-        autoSelectedForDeepLinkRef.current !== deepLinkConvId &&
-        loaded.length > 0
-      ) {
-        autoSelectedForDeepLinkRef.current = deepLinkConvId;
-        // If the deep-linked conversation is already the active one
-        // (e.g. because the user clicked it in the list and we
-        // router.replace()'d the URL, which made the ConversationList
-        // refetch and land us back here), do NOT re-apply it. Doing so
-        // would setMessages([]) on a thread whose messages have
-        // already been loaded by MessageThread — and because
-        // conversationId didn't change, MessageThread wouldn't
-        // refetch. The thread would read "No messages yet" until a
-        // full page reload rehydrated state from scratch.
-        if (activeConversation?.id === deepLinkConvId) return;
-        const match = loaded.find((c) => c.id === deepLinkConvId);
-        if (match) {
-          setActiveConversation(match);
-          setActiveContact(match.contact ?? null);
-          setMessages([]);
-          // Mirror the optimistic unread reset that handleSelectConversation
-          // does — the user just deep-linked into this conv, treat that the
-          // same as a click. Leaves activeConversation.unread_count alone so
-          // the MessageThread reset effect still fires the server UPDATE.
-          if (match.unread_count > 0) {
-            setConversations((prev) =>
-              prev.map((c) =>
-                c.id === match.id ? { ...c, unread_count: 0 } : c,
-              ),
-            );
-          }
-        }
-      }
-    },
-    [deepLinkConvId, activeConversation?.id]
-  );
+  const handleConversationsLoaded = useCallback((loaded: Conversation[]) => {
+    setConversations(loaded);
+  }, []);
 
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
@@ -600,10 +655,8 @@ function InboxPageInner() {
       // even if the realtime UPDATE is dropped.
       setConversations((prev) =>
         prev.map((c) =>
-          c.id === conv.id && c.unread_count > 0
-            ? { ...c, unread_count: 0 }
-            : c,
-        ),
+          c.id === conv.id && c.unread_count > 0 ? { ...c, unread_count: 0 } : c
+        )
       );
       // Record the selection on the deep-link ref BEFORE we change the
       // URL. The router.replace below flips `deepLinkConvId`, which can
@@ -631,9 +684,8 @@ function InboxPageInner() {
     // Clearing the ref lets the deep-link auto-selector fire again if
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
-    router.replace("/inbox", { scroll: false });
+    router.replace('/inbox', { scroll: false });
   }, [router]);
-
 
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {
     setMessages(loaded);
@@ -708,19 +760,26 @@ function InboxPageInner() {
         <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>
-              {crmMatchError ? "Could not find the conversation" : "Choose a conversation"}
+              {crmMatchError
+                ? 'Could not find the conversation'
+                : 'Choose a conversation'}
             </DialogTitle>
             <DialogDescription>
               {crmMatchError
                 ? crmMatchError
-                : "More than one WACRM contact matches this CRM record. Choose the correct chat."}
+                : 'More than one WACRM contact matches this CRM record. Choose the correct chat.'}
             </DialogDescription>
           </DialogHeader>
           {crmMatchCandidates?.map((contact) => (
-            <section key={contact.id} className="space-y-2 rounded-lg border p-3">
+            <section
+              key={contact.id}
+              className="space-y-2 rounded-lg border p-3"
+            >
               <div>
-                <p className="font-medium">{contact.name || "Unnamed contact"}</p>
-                <p className="text-sm text-muted-foreground">{contact.phone}</p>
+                <p className="font-medium">
+                  {contact.name || 'Unnamed contact'}
+                </p>
+                <p className="text-muted-foreground text-sm">{contact.phone}</p>
               </div>
               {contact.conversations.length > 0 ? (
                 contact.conversations.map((conversation, index) => (
@@ -731,26 +790,28 @@ function InboxPageInner() {
                       setCrmMatchCandidates(null);
                       router.replace(
                         `/inbox?c=${encodeURIComponent(conversation.id)}`,
-                        { scroll: false },
+                        { scroll: false }
                       );
                     }}
-                    className="flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm hover:bg-muted"
+                    className="hover:bg-muted flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm"
                   >
                     <span>
                       {contact.conversations.length > 1
                         ? `Conversation ${index + 1}`
-                        : "Open conversation"}
+                        : 'Open conversation'}
                     </span>
                     <span className="text-muted-foreground">
                       {conversation.status}
                       {conversation.last_message_at
                         ? ` · ${new Date(conversation.last_message_at).toLocaleString()}`
-                        : ""}
+                        : ''}
                     </span>
                   </button>
                 ))
               ) : (
-                <p className="text-sm text-muted-foreground">No conversations for this contact.</p>
+                <p className="text-muted-foreground text-sm">
+                  No conversations for this contact.
+                </p>
               )}
             </section>
           ))}
@@ -762,9 +823,7 @@ function InboxPageInner() {
       {whatsappConnected === false && (
         <div className="flex shrink-0 items-center justify-center gap-2 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2">
           <WifiOff className="h-4 w-4 text-amber-400" />
-          <p className="text-xs text-amber-400">
-            {t("whatsappNotConnected")}
-          </p>
+          <p className="text-xs text-amber-400">{t('whatsappNotConnected')}</p>
         </div>
       )}
 
@@ -774,8 +833,8 @@ function InboxPageInner() {
             thread can occupy the full width. Always visible on lg+. */}
         <div
           className={cn(
-            "flex h-full flex-1 lg:flex-none",
-            hasActiveConv ? "hidden lg:flex" : "flex",
+            'flex h-full flex-1 lg:flex-none',
+            hasActiveConv ? 'hidden lg:flex' : 'flex'
           )}
         >
           <ConversationList
@@ -799,8 +858,8 @@ function InboxPageInner() {
             on the right. Issue #165. */}
         <div
           className={cn(
-            "flex h-full min-w-0 flex-1 lg:flex",
-            hasActiveConv ? "flex" : "hidden lg:flex",
+            'flex h-full min-w-0 flex-1 lg:flex',
+            hasActiveConv ? 'flex' : 'hidden lg:flex'
           )}
         >
           <MessageThread

@@ -20,7 +20,12 @@ export function WacrmCustomerChatButton({ customerId }: WacrmCustomerChatButtonP
       if (result.status === "matched") {
         await navigate({
           to: "/wacrm",
-          search: { contact: result.contactId },
+          search: {
+            contact: result.contactId,
+            conversationId: undefined,
+            matchType: undefined,
+            matchId: undefined,
+          },
         });
         return;
       }

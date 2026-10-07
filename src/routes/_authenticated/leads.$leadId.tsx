@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MessageSquareText } from "lucide-react";
 import {
   useCommunications,
   useLead,
@@ -20,7 +20,6 @@ import { PageHeader } from "@/components/app-shell";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { LeadConvertActions } from "@/components/convert-actions";
 import { AssigneeSelect, useAssigneeNames, useCanAssign } from "@/components/assignee-select";
-import { WhatsAppChatDialog } from "@/components/whatsapp-inbox";
 import { WacrmContactMatchLink } from "@/components/wacrm-contact-match-link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -119,20 +118,14 @@ function LeadDetailPage() {
         subtitle={`${lead.code ?? "Lead"} · created ${formatDate(lead.lead_date)}`}
         actions={
           <div className="flex items-center gap-2">
-            <WhatsAppChatDialog
-              context={{
-                leadId: lead.id,
-                customerId: lead.customer_id,
-                phoneNumber: lead.mobile,
-                customerName: lead.customer_name,
-                destination: lead.destination_text ?? lead.destinations?.name,
-                status: lead.status,
-                assignedEmployeeName: nameOf(lead.assigned_to),
-              }}
+            <WacrmContactMatchLink
+              recordType="lead"
+              recordId={lead.id}
               trigger={
-                <Button variant="outline" size="sm">
+                <>
+                  <MessageSquareText className="size-4" />
                   WhatsApp Chat
-                </Button>
+                </>
               }
             />
             <LeadConvertActions leadId={leadId} hasCustomer={Boolean(lead.customer_id)} />
@@ -267,20 +260,14 @@ function LeadDetailPage() {
 
         {tab === "whatsapp" && (
           <div className="lg:col-span-3">
-            <WhatsAppChatDialog
-              context={{
-                leadId: lead.id,
-                customerId: lead.customer_id,
-                phoneNumber: lead.mobile,
-                customerName: lead.customer_name,
-                destination: lead.destinations?.name ?? lead.destination_text,
-                status: lead.status,
-                assignedEmployeeName: nameOf(lead.assigned_to),
-              }}
+            <WacrmContactMatchLink
+              recordType="lead"
+              recordId={lead.id}
               trigger={
-                <Button variant="outline" className="mb-4">
+                <>
+                  <MessageSquareText className="size-4" />
                   Open WhatsApp conversation
-                </Button>
+                </>
               }
             />
           </div>

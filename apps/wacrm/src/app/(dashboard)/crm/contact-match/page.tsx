@@ -67,12 +67,20 @@ function ContactMatchPageInner() {
       })
       .then((result) => {
         setMatches(result.candidates);
+        if (result.candidates.length === 0) {
+          router.replace('/inbox');
+          return;
+        }
         if (
           result.candidates.length === 1 &&
-          result.candidates[0]?.conversations.length === 1
+          result.candidates[0]?.conversations.length === 0
         ) {
+          router.replace('/inbox');
+          return;
+        }
+        if (result.candidates.length === 1 && result.candidates[0]?.conversations[0]) {
           router.replace(
-            `/inbox?c=${encodeURIComponent(result.candidates[0].conversations[0]!.id)}`
+            `/inbox?c=${encodeURIComponent(result.candidates[0].conversations[0].id)}`
           );
         }
       })
@@ -124,12 +132,6 @@ function ContactMatchPageInner() {
             role="alert"
           >
             {error || missingLinkError}
-          </p>
-        )}
-        {!loading && !error && !missingLinkError && matches.length === 0 && (
-          <p className="bg-muted text-muted-foreground mt-6 rounded-md p-3 text-sm">
-            No contact with this exact phone number was found in this WACRM
-            account.
           </p>
         )}
         {!loading && !error && !missingLinkError && matches.length > 0 && (

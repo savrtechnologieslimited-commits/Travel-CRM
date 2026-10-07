@@ -4,7 +4,7 @@ import { Eye, Mail, MessageSquareText, PencilLine, Phone, Plus, Search } from "l
 import { useCustomers } from "@/lib/data";
 import { formatDate } from "@/lib/crm";
 import { NewCustomerDialog } from "@/components/entity-dialogs";
-import { WhatsAppChatDialog } from "@/components/whatsapp-inbox";
+import { WacrmContactMatchLink } from "@/components/wacrm-contact-match-link";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -239,25 +239,12 @@ function CustomersPage() {
                           </Button>
                         )}
 
-                        <WhatsAppChatDialog
-                          context={{
-                            customerId: customer.id,
-                            phoneNumber: phone === "—" ? null : phone,
-                            customerName: customer.full_name,
-                          }}
-                          trigger={
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-slate-600 hover:text-sky-700"
-                              aria-label="Open WhatsApp chat"
-                              title="Open WhatsApp chat"
-                              disabled={phone === "—"}
-                            >
-                              <MessageSquareText className="size-4" />
-                            </Button>
-                          }
+                        <WacrmContactMatchLink
+                          recordType="customer"
+                          recordId={customer.id}
+                          compact
+                          disabled={phone === "—"}
+                          trigger={<MessageSquareText className="size-4" />}
                         />
                       </div>
                     </TableCell>

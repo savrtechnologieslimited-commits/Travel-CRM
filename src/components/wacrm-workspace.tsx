@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useServerFn } from "@tanstack/react-start";
 import { LoaderCircle, MessageCircle, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -11,8 +13,28 @@ import {
 } from "@/components/ui/dialog";
 import { resolveWacrmAppUrl } from "@/lib/wacrm-app-url";
 import { WacrmDestinationAssignments } from "@/components/wacrm-destination-assignments";
+import { createWacrmContactMatchHandoffFn } from "@/lib/wacrm-contact-match";
 
-export function WacrmWorkspace({ contact }: { contact?: string }) {
+export function WacrmWorkspace({
+  contact,
+  conversationId,
+  matchTarget,
+  showAssignmentControls = true,
+}: {
+  contact?: string;
+  conversationId?: string;
+  matchTarget?: { recordType: "lead" | "customer"; recordId: string };
+  showAssignmentControls?: boolean;
+}) {
+  const createMatchHandoff = useServerFn(createWacrmContactMatchHandoffFn);
+  const matchHandoff = useQuery({
+    queryKey: ["wacrm-contact-match-handoff", matchTarget?.recordType, matchTarget?.recordId],
+    enabled: Boolean(matchTarget),
+    queryFn: () => {
+      if (!matchTarget) throw new Error("Choose a lead or customer to find a conversation.");
+      return createMatchHandoff({ data: matchTarget });
+    },
+  });
   const wacrmAppUrl = resolveWacrmAppUrl(
     import.meta.env["VITE_WACRM_APP_URL"],
     import.meta.env.DEV,
@@ -25,8 +47,16 @@ export function WacrmWorkspace({ contact }: { contact?: string }) {
     contact && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contact)
       ? contact
       : null;
-  const destination = contactId ? `/inbox?contact=${encodeURIComponent(contactId)}` : "/dashboard";
-  const initialUrl = wacrmUrl ? new URL(destination, wacrmUrl).toString() : undefined;
+  const destination = contactId
+    ? `/contacts?contact=${encodeURIComponent(contactId)}`
+    : conversationId
+      ? `/inbox?c=${encodeURIComponent(conversationId)}`
+      : "/inbox";
+  const initialUrl = matchTarget
+    ? matchHandoff.data?.url
+    : wacrmUrl
+      ? new URL(destination, wacrmUrl).toString()
+      : undefined;
 
   useEffect(() => {
     if (!initialUrl) return;
@@ -41,9 +71,26 @@ export function WacrmWorkspace({ contact }: { contact?: string }) {
   return (
     <section className="flex min-h-0 flex-1 flex-col bg-background">
       <div className="relative min-h-0 flex-1">
-        {(!frameLoaded || connectionFailed) && wacrmUrl ? (
+        {(!frameLoaded || connectionFailed || matchHandoff.isLoading) && wacrmUrl ? (
           <div className="absolute inset-0 z-10 grid place-items-center bg-background p-6 text-center">
-            {connectionFailed ? (
+            {matchTarget && matchHandoff.isLoading ? (
+              <div className="flex flex-col items-center gap-3" role="status" aria-live="polite">
+                <LoaderCircle className="size-8 animate-spin text-primary" aria-hidden="true" />
+                <p className="font-medium">Finding the matching WhatsApp conversation…</p>
+              </div>
+            ) : matchHandoff.isError ? (
+              <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-sm">
+                <h2 className="text-lg font-semibold">Could not find the conversation</h2>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {matchHandoff.error instanceof Error
+                    ? matchHandoff.error.message
+                    : "WACRM contact matching failed."}
+                </p>
+                <Button className="mt-5" onClick={() => void matchHandoff.refetch()} type="button">
+                  Retry
+                </Button>
+              </div>
+            ) : connectionFailed ? (
               <div className="w-full max-w-md rounded-xl border bg-card p-6 shadow-sm">
                 <div className="mx-auto mb-4 grid size-12 place-items-center rounded-full bg-destructive/10 text-destructive">
                   <MessageCircle className="size-6" aria-hidden="true" />
@@ -79,9 +126,9 @@ export function WacrmWorkspace({ contact }: { contact?: string }) {
             )}
           </div>
         ) : null}
-        {wacrmUrl ? (
+        {wacrmUrl && initialUrl ? (
           <iframe
-            key={retryCount}
+            key={`${retryCount}:${initialUrl}`}
             title="WACRM WhatsApp CRM"
             src={initialUrl}
             onLoad={() => {
@@ -105,24 +152,27 @@ export function WacrmWorkspace({ contact }: { contact?: string }) {
           </div>
         )}
       </div>
-      <div className="flex shrink-0 justify-end border-t bg-background px-3 py-1.5">
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button type="button" variant="outline" size="sm">
-              Assign
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-h-[90vh] w-[min(96vw,1100px)] max-w-5xl overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Assign destinations</DialogTitle>
-              <DialogDescription>
-                Choose the active employee and latest active PDF used for each WhatsApp destination.
-              </DialogDescription>
-            </DialogHeader>
-            <WacrmDestinationAssignments />
-          </DialogContent>
-        </Dialog>
-      </div>
+      {showAssignmentControls && (
+        <div className="flex shrink-0 justify-end border-t bg-background px-3 py-1.5">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button type="button" variant="outline" size="sm">
+                Assign
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-h-[90vh] w-[min(96vw,1100px)] max-w-5xl overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Assign destinations</DialogTitle>
+                <DialogDescription>
+                  Choose the active employee and latest active PDF used for each WhatsApp
+                  destination.
+                </DialogDescription>
+              </DialogHeader>
+              <WacrmDestinationAssignments />
+            </DialogContent>
+          </Dialog>
+        </div>
+      )}
     </section>
   );
 }

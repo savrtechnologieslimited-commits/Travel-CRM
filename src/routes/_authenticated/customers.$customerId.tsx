@@ -1036,15 +1036,16 @@ function CustomerDetailPage() {
 
         <div className="flex items-center gap-2">
           {primaryPhone !== "—" ? (
-            <a
-              href={`https://wa.me/${String(primaryPhone).replace(/\D/g, "")}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex items-center gap-2 rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-            >
-              <MessageSquareText className="size-4" />
-              WhatsApp
-            </a>
+            <WacrmContactMatchLink
+              recordType="customer"
+              recordId={customer.id}
+              trigger={
+                <>
+                  <MessageSquareText className="size-4" />
+                  WhatsApp
+                </>
+              }
+            />
           ) : null}
 
           <NewCustomerDialog

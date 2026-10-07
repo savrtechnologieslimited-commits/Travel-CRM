@@ -12,7 +12,7 @@ import { LeadSupplierEmailDialog } from "@/components/lead-supplier-email-dialog
 import { LeadSendProposalDialog } from "@/components/lead-send-proposal-dialog";
 import { OwnerFilter, useAssigneeNames } from "@/components/assignee-select";
 import { useCurrentUser } from "@/lib/ops-data";
-import { WhatsAppChatDialog } from "@/components/whatsapp-inbox";
+import { WacrmContactMatchLink } from "@/components/wacrm-contact-match-link";
 import { supabase } from "@/integrations/supabase/client";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -247,24 +247,11 @@ function LeadsPage() {
                 </TableCell>
                 <TableCell className="py-3">
                   {lead.source === "whatsapp" ? (
-                    <WhatsAppChatDialog
-                      context={{
-                        leadId: lead.id,
-                        customerId: lead.customer_id,
-                        phoneNumber: lead.mobile,
-                        customerName: lead.customer_name,
-                        destination: lead.destination_text ?? lead.destinations?.name,
-                        status: lead.status,
-                        assignedEmployeeName: nameOf(lead.assigned_to),
-                      }}
-                      trigger={
-                        <button
-                          type="button"
-                          className="inline-flex rounded-md border border-sky-200 bg-sky-50 px-2 py-1 text-xs font-medium text-sky-700 transition hover:bg-sky-100"
-                        >
-                          {titleize(lead.source)}
-                        </button>
-                      }
+                    <WacrmContactMatchLink
+                      recordType="lead"
+                      recordId={lead.id}
+                      disabled={!lead.mobile && !lead.whatsapp}
+                      trigger={titleize(lead.source)}
                     />
                   ) : (
                     <span className="inline-flex rounded-md border border-slate-200 bg-slate-100 px-2 py-1 text-xs font-medium text-slate-600">
@@ -335,27 +322,12 @@ function LeadsPage() {
                         special_requirements: lead.special_requirements,
                       }}
                     />
-                    <WhatsAppChatDialog
-                      context={{
-                        leadId: lead.id,
-                        customerId: lead.customer_id,
-                        phoneNumber: lead.mobile,
-                        customerName: lead.customer_name,
-                        destination: lead.destinations?.name ?? lead.destination_text,
-                        status: lead.status,
-                        assignedEmployeeName: nameOf(lead.assigned_to),
-                      }}
-                      trigger={
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8 text-slate-600 hover:text-sky-700"
-                          aria-label="Open WhatsApp chat"
-                          disabled={!lead.mobile}
-                        >
-                          <MessageSquareText className="size-4" />
-                        </Button>
-                      }
+                    <WacrmContactMatchLink
+                      recordType="lead"
+                      recordId={lead.id}
+                      compact
+                      disabled={!lead.mobile && !lead.whatsapp}
+                      trigger={<MessageSquareText className="size-4" />}
                     />
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

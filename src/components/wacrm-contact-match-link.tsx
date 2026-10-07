@@ -1,66 +1,68 @@
-import { useMutation } from "@tanstack/react-query";
-import { useState } from "react";
-import { ExternalLink, LoaderCircle } from "lucide-react";
-import { createWacrmContactMatchHandoffFn } from "@/lib/wacrm-contact-match";
+import type { ReactNode } from "react";
+import { ExternalLink, MessageSquareText } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { WacrmWorkspace } from "@/components/wacrm-workspace";
 
 type WacrmContactMatchLinkProps = {
   recordType: "lead" | "customer";
   recordId: string;
+  trigger?: ReactNode;
+  compact?: boolean;
+  disabled?: boolean;
+  label?: string;
 };
 
-export function WacrmContactMatchLink({ recordType, recordId }: WacrmContactMatchLinkProps) {
-  const [popupError, setPopupError] = useState<string | null>(null);
-  const { mutateAsync, error, isPending } = useMutation({
-    mutationFn: (record: WacrmContactMatchLinkProps) =>
-      createWacrmContactMatchHandoffFn({ data: record }),
-  });
-
-  async function openMatch() {
-    setPopupError(null);
-    const target = window.open("about:blank", "_blank");
-    if (!target) {
-      setPopupError("Allow pop-ups to open WACRM contact matching.");
-      return;
-    }
-    try {
-      const result = await mutateAsync({ recordType, recordId });
-      target.location.href = result.url;
-    } catch {
-      target.close();
-    }
-  }
-
+export function WacrmContactMatchLink({
+  recordType,
+  recordId,
+  trigger,
+  compact = false,
+  disabled = false,
+  label = "Open WhatsApp chat",
+}: WacrmContactMatchLinkProps) {
   return (
-    <div className="flex flex-wrap items-center gap-2 text-sm">
-      <span className="font-medium text-muted-foreground">WACRM contact</span>
-      <span className="text-muted-foreground">
-        Find the conversation by phone in the currently signed-in WACRM account.
-      </span>
-      <Button
-        type="button"
-        size="sm"
-        variant="outline"
-        onClick={() => void openMatch()}
-        disabled={isPending}
-      >
-        {isPending ? (
-          <LoaderCircle className="size-4 animate-spin" />
-        ) : (
-          <ExternalLink className="size-4" />
-        )}
-        {isPending ? "Opening WACRM…" : "Find conversation"}
-      </Button>
-      {error ? (
-        <span role="alert" className="text-destructive">
-          {error instanceof Error ? error.message : "Could not open WACRM contact matching."}
-        </span>
-      ) : null}
-      {popupError ? (
-        <span role="alert" className="text-destructive">
-          {popupError}
-        </span>
-      ) : null}
-    </div>
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button
+          type="button"
+          size={compact ? "icon" : "sm"}
+          variant={compact ? "ghost" : "outline"}
+          className={compact ? "h-8 w-8 text-slate-600 hover:text-sky-700" : undefined}
+          disabled={disabled}
+          aria-label={label}
+          title={label}
+        >
+          {trigger ?? (
+            <>
+              <MessageSquareText className="size-4" />
+              {!compact && (
+                <>
+                  Open WhatsApp chat
+                  <ExternalLink className="size-4" />
+                </>
+              )}
+              {compact && <span className="sr-only">Open WhatsApp chat</span>}
+            </>
+          )}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="flex h-[min(92vh,900px)] w-[min(96vw,1400px)] max-w-[1400px] flex-col gap-0 overflow-hidden p-0">
+        <DialogHeader className="shrink-0 border-b px-5 py-3 text-left">
+          <DialogTitle>WhatsApp conversation</DialogTitle>
+          <DialogDescription>
+            View the conversation in the WhatsApp inbox without leaving this page.
+          </DialogDescription>
+        </DialogHeader>
+        <WacrmWorkspace matchTarget={{ recordType, recordId }} showAssignmentControls={false} />
+      </DialogContent>
+    </Dialog>
   );
 }

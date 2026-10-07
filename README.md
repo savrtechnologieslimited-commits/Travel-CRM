@@ -1631,6 +1631,16 @@ random `WACRM_BRIDGE_SECRET` in the CRM server environment and WACRM's
 Use a unique secret for this CRM/WACRM pair. The two apps keep separate
 databases and passwords.
 
+The CRM's native WhatsApp conversation dialog reads chat history directly
+from WACRM's Supabase database (`contacts`, `conversations`, and `messages`).
+In the CRM deployment's server-only environment, set `WACRM_SUPABASE_URL` to
+WACRM's `NEXT_PUBLIC_WHATSAPP_SUPABASE_URL` and
+`WACRM_SUPABASE_SERVICE_ROLE_KEY` to WACRM's `WHATSAPP_SUPABASE_SERVICE_ROLE_KEY`.
+The service-role key must remain private (do not use a `VITE_` prefix); add both
+values to the CRM's local `.env.local` and production hosting environment.
+The dialog maps the verified CRM user's email to a WACRM profile, then scopes
+all contact and conversation lookups to that profile's WACRM account.
+
 Customer greetings are sent by the WACRM account linked to the CRM. Apply
 `20261004140000_customer_whatsapp_greeting_opt_in.sql` to the CRM Supabase
 project. In WACRM, create an API key in **Settings → API keys** with only the

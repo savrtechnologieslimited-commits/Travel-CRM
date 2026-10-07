@@ -361,80 +361,134 @@ export const loadWacrmConversationFn = createServerFn({ method: "POST" })
           .filter((phone) => /^\d{7,15}$/.test(phone)),
       ),
     ];
-    if (phones.length === 0) {
-      throw new Error("This CRM record does not have a valid phone number to match.");
+    if (phones.length === 0 && !normalizedEmail) {
+      throw new Error(
+        "This CRM record does not have a valid email address or phone number to match.",
+      );
     }
 
-    const issuer = resolveRequestOrigin(request);
-    if (!issuer || !isHttpOrigin(issuer)) {
-      throw new Error("The CRM origin could not be verified.");
+    const { getWacrmDatabaseAdminClient } = await import("./wacrm-database.server");
+    const wacrm = getWacrmDatabaseAdminClient();
+    const { data: profile, error: profileError } = await wacrm
+      .from("profiles")
+      .select("user_id,account_id")
+      .eq("email", user.email.trim().toLowerCase())
+      .maybeSingle();
+    if (profileError) {
+      console.error("[loadWacrmConversationFn] WACRM profile lookup failed:", profileError);
+      throw new Error("Could not find this CRM account in WACRM.");
     }
-    const wacrmAppUrl = resolveWacrmAppUrl(
-      import.meta.env["VITE_WACRM_APP_URL"],
-      import.meta.env.DEV,
+    if (!profile?.account_id) {
+      throw new Error("This email is not linked to a WACRM account. Sign in to WACRM once first.");
+    }
+
+    let emailContacts: Array<{ id: string; name: string | null; phone: string }> = [];
+    if (normalizedEmail) {
+      const { data, error } = await wacrm
+        .from("contacts")
+        .select("id,name,phone")
+        .eq("account_id", profile.account_id)
+        .eq("email_normalized", normalizedEmail);
+      if (error) {
+        console.error("[loadWacrmConversationFn] WACRM email contact lookup failed:", error);
+        throw new Error("WACRM could not search contacts by email.");
+      }
+      emailContacts = data ?? [];
+    }
+
+    let phoneContacts: Array<{ id: string; name: string | null; phone: string }> = [];
+    if (phones.length > 0) {
+      const { data, error } = await wacrm
+        .from("contacts")
+        .select("id,name,phone")
+        .eq("account_id", profile.account_id)
+        .in("phone_normalized", phones);
+      if (error) {
+        console.error("[loadWacrmConversationFn] WACRM phone contact lookup failed:", error);
+        throw new Error("WACRM could not search contacts by phone.");
+      }
+      phoneContacts = data ?? [];
+    }
+
+    const contacts = new Map(
+      [...emailContacts, ...phoneContacts].map((contact) => [contact.id, contact]),
     );
-    if (!wacrmAppUrl) throw new Error("The WACRM app URL is not configured.");
+    const contactIds = [...contacts.keys()];
+    const { data: conversations, error: conversationsError } = contactIds.length
+      ? await wacrm
+          .from("conversations")
+          .select("id,contact_id,status,last_message_at")
+          .eq("account_id", profile.account_id)
+          .in("contact_id", contactIds)
+          .order("last_message_at", { ascending: false, nullsFirst: false })
+      : { data: [], error: null };
+    if (conversationsError) {
+      console.error(
+        "[loadWacrmConversationFn] WACRM conversation lookup failed:",
+        conversationsError,
+      );
+      throw new Error("WACRM could not load the matching conversations.");
+    }
 
-    const metadataName = user.user_metadata?.["full_name"];
-    const fullName = typeof metadataName === "string" ? metadataName.trim().slice(0, 120) : "";
-    const { createWacrmContactMatchToken } = await import("./wacrm-bridge.server");
-    const token = createWacrmContactMatchToken({
-      crmUserId: user.id,
-      email: user.email.toLowerCase(),
-      fullName,
-      issuer,
-      audience: wacrmAppUrl.origin,
-      record: {
-        type: data.recordType,
-        id: data.recordId,
-        email: normalizedEmail,
-        phones,
-      },
+    const latestConversationByContact = new Map<
+      string,
+      NonNullable<typeof conversations>[number]
+    >();
+    for (const conversation of conversations ?? []) {
+      if (!latestConversationByContact.has(conversation.contact_id)) {
+        latestConversationByContact.set(conversation.contact_id, conversation);
+      }
+    }
+
+    const candidates = [...contacts.values()].map((contact) => {
+      const conversation = latestConversationByContact.get(contact.id);
+      return {
+        ...contact,
+        conversations: conversation
+          ? [
+              {
+                id: conversation.id,
+                status: conversation.status,
+                last_message_at: conversation.last_message_at,
+              },
+            ]
+          : [],
+      };
     });
-
-    let response: Response;
-    try {
-      response = await fetch(new URL("/api/crm/contact-match", wacrmAppUrl), {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          origin: wacrmAppUrl.origin,
-          "x-crm-origin": issuer,
-          "x-crm-server-bridge": "1",
-        },
-        body: JSON.stringify({ token }),
-        cache: "no-store",
-        signal: AbortSignal.timeout(10000),
-      });
-    } catch (error) {
-      console.error("[loadWacrmConversationFn] WACRM request failed:", error);
-      throw new Error("WACRM could not be reached to load this conversation.");
-    }
-
-    let responseBody: unknown;
-    try {
-      responseBody = await response.json();
-    } catch (error) {
-      console.error("[loadWacrmConversationFn] WACRM returned invalid JSON:", error);
-      throw new Error("WACRM returned an invalid conversation response.");
-    }
-    if (!response.ok) {
-      const message =
-        responseBody &&
-        typeof responseBody === "object" &&
-        "error" in responseBody &&
-        typeof responseBody.error === "string"
-          ? responseBody.error
-          : "WACRM could not load this conversation.";
-      console.error(`[loadWacrmConversationFn] WACRM returned HTTP ${response.status}: ${message}`);
-      throw new Error(message);
-    }
+    const matchingConversations = candidates.flatMap((contact) => contact.conversations);
+    const messageResults = await Promise.all(
+      matchingConversations.map(async (conversation) => {
+        const { data, error } = await wacrm
+          .from("messages")
+          .select(
+            "id,conversation_id,sender_type,content_type,content_text,media_url,template_name,status,created_at",
+          )
+          .eq("conversation_id", conversation.id)
+          .order("created_at", { ascending: false })
+          .limit(1000);
+        if (error) {
+          console.error("[loadWacrmConversationFn] WACRM message lookup failed:", error);
+          throw new Error("WACRM could not load the matching conversation messages.");
+        }
+        return { conversationId: conversation.id, messages: (data ?? []).reverse() };
+      }),
+    );
+    const contactMatchStatus =
+      candidates.length === 0 ? "unmatched" : candidates.length === 1 ? "matched" : "ambiguous";
+    const result = {
+      status: contactMatchStatus,
+      candidates,
+      messages: messageResults.flatMap((result) => result.messages),
+      historyMayBeLimitedConversationIds: messageResults
+        .filter((result) => result.messages.length === 1000)
+        .map((result) => result.conversationId),
+    };
 
     try {
-      return wacrmConversationResponseSchema.parse(responseBody);
+      return wacrmConversationResponseSchema.parse(result);
     } catch (error) {
-      console.error("[loadWacrmConversationFn] invalid WACRM response:", error);
-      throw new Error("WACRM returned an invalid conversation response.");
+      console.error("[loadWacrmConversationFn] invalid WACRM database response:", error);
+      throw new Error("WACRM returned conversation data in an unsupported format.");
     }
   });
 

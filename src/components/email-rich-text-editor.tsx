@@ -74,28 +74,6 @@ export const EmailRichTextEditor = forwardRef<EmailRichTextEditorHandle, EmailRi
       if (editor.innerHTML !== safeHtml) editor.innerHTML = safeHtml;
     }, [value]);
 
-    useImperativeHandle(
-      forwardedRef,
-      () => ({
-        insertText(text) {
-          const editor = editorRef.current;
-          if (!editor) return;
-          restoreSelection();
-          document.execCommand("insertText", false, text);
-          onChange(editor.innerHTML);
-        },
-        insertLink(url) {
-          restoreSelection();
-          document.execCommand("createLink", false, url);
-          if (editorRef.current) onChange(editorRef.current.innerHTML);
-        },
-        insertImageFile(file) {
-          insertImage(file);
-        },
-      }),
-      [insertImage, onChange, restoreSelection],
-    );
-
     const runCommand = useCallback(
       (command: string, commandValue?: string) => {
         restoreSelection();
@@ -131,6 +109,28 @@ export const EmailRichTextEditor = forwardRef<EmailRichTextEditorHandle, EmailRi
         reader.readAsDataURL(file);
       },
       [runCommand],
+    );
+
+    useImperativeHandle(
+      forwardedRef,
+      () => ({
+        insertText(text) {
+          const editor = editorRef.current;
+          if (!editor) return;
+          restoreSelection();
+          document.execCommand("insertText", false, text);
+          onChange(editor.innerHTML);
+        },
+        insertLink(url) {
+          restoreSelection();
+          document.execCommand("createLink", false, url);
+          if (editorRef.current) onChange(editorRef.current.innerHTML);
+        },
+        insertImageFile(file) {
+          insertImage(file);
+        },
+      }),
+      [insertImage, onChange, restoreSelection],
     );
 
     return (

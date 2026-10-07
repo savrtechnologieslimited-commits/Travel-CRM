@@ -56,6 +56,12 @@ export async function OPTIONS(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const corsHeaders = getCorsHeaders(request);
+  const serverBridgeRequest =
+    request.headers.get('x-crm-server-bridge') === '1' &&
+    request.headers.get('origin') === new URL(request.url).origin;
+  if (request.headers.has('x-crm-server-bridge') && !serverBridgeRequest) {
+    return matchError(request, 'This server bridge request is invalid.', 403);
+  }
   const contentLength = request.headers.get('content-length');
   if (
     contentLength &&
@@ -143,7 +149,8 @@ export async function POST(request: NextRequest) {
     data: { user: activeWacrmUser },
     error: sessionError,
   } = await sessionClient.auth.getUser();
-  const requiresActiveWacrmSession = request.headers.has('x-crm-origin');
+  const requiresActiveWacrmSession =
+    request.headers.has('x-crm-origin') && !serverBridgeRequest;
   if (requiresActiveWacrmSession && (sessionError || !activeWacrmUser)) {
     return matchError(
       request,

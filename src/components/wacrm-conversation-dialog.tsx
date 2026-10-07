@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
 import { Check, CheckCheck, LoaderCircle, MessageCircle, MessageSquareText } from "lucide-react";
-import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -12,41 +11,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { createWacrmContactMatchHandoffFn } from "@/lib/wacrm-contact-match";
+import { loadWacrmConversationFn, type WacrmConversationResult } from "@/lib/wacrm-contact-match";
 
-const messageSchema = z.object({
-  id: z.string(),
-  conversation_id: z.string(),
-  sender_type: z.enum(["customer", "agent", "bot"]),
-  content_type: z.string(),
-  content_text: z.string().nullable(),
-  media_url: z.string().nullable(),
-  template_name: z.string().nullable(),
-  status: z.string(),
-  created_at: z.string(),
-});
-
-const conversationSchema = z.object({
-  id: z.string(),
-  status: z.string(),
-  last_message_at: z.string().nullable(),
-});
-
-const contactSchema = z.object({
-  id: z.string(),
-  name: z.string().nullable(),
-  phone: z.string(),
-  conversations: z.array(conversationSchema),
-});
-
-const responseSchema = z.object({
-  status: z.enum(["matched", "ambiguous", "unmatched"]),
-  candidates: z.array(contactSchema),
-  messages: z.array(messageSchema),
-  historyMayBeLimitedConversationIds: z.array(z.string()),
-});
-
-type WacrmConversationResult = z.infer<typeof responseSchema>;
 type WacrmContact = WacrmConversationResult["candidates"][number];
 
 function formatMessageTime(value: string): string {
@@ -202,32 +168,13 @@ export function WacrmConversationDialog({
   label?: string;
 }) {
   const [open, setOpen] = useState(false);
-  const createHandoff = useServerFn(createWacrmContactMatchHandoffFn);
+  const loadWacrmConversation = useServerFn(loadWacrmConversationFn);
   const loadConversation = useMutation({
     retry: false,
     mutationFn: async (): Promise<WacrmConversationResult> => {
-      const handoff = await createHandoff({
+      return loadWacrmConversation({
         data: { recordType, recordId },
       });
-      const response = await fetch(handoff.apiUrl, {
-        method: "POST",
-        credentials: "include",
-        headers: {
-          "content-type": "application/json",
-          "x-crm-origin": handoff.issuer,
-        },
-        body: JSON.stringify({ token: handoff.token }),
-        cache: "no-store",
-      });
-      const body: unknown = await response.json();
-      if (!response.ok) {
-        const message =
-          body && typeof body === "object" && "error" in body && typeof body.error === "string"
-            ? body.error
-            : "WACRM could not load this conversation.";
-        throw new Error(message);
-      }
-      return responseSchema.parse(body);
     },
   });
 

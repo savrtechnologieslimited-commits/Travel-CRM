@@ -83,6 +83,8 @@ function GmailInboxPage() {
 
   const [gmailEmail, setGmailEmail] = useState<string | null>(null);
   const [zohoEmail, setZohoEmail] = useState<string | null>(null);
+  const [gmailStatus, setGmailStatus] = useState<"connected" | "error" | null>(null);
+  const [zohoStatus, setZohoStatus] = useState<"connected" | "error" | null>(null);
   const [inbox, setInbox] = useState<GmailListItem[]>([]);
   const [mailFolder, setMailFolder] = useState<MailFolder>("inbox");
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
@@ -94,7 +96,7 @@ function GmailInboxPage() {
   const [disconnecting, setDisconnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const connected = Boolean(gmailEmail);
+  const connected = gmailStatus === "connected";
 
   const selectedThreadMessage = useMemo(() => {
     if (!selectedThread) return null;
@@ -118,16 +120,24 @@ function GmailInboxPage() {
       );
       return;
     }
-    const connectedGmail = accounts.find((account) => account.provider === "gmail")?.email ?? null;
+    const gmailConnection = accounts.find((account) => account.provider === "gmail");
+    const zohoConnection = accounts.find((account) => account.provider === "zoho");
+    const connectedGmail = gmailConnection?.email ?? null;
     setGmailEmail(connectedGmail);
-    setZohoEmail(accounts.find((account) => account.provider === "zoho")?.email ?? null);
+    setGmailStatus(gmailConnection?.status === "error" ? "error" : gmailConnection ? "connected" : null);
+    setZohoEmail(zohoConnection?.email ?? null);
+    setZohoStatus(zohoConnection?.status === "error" ? "error" : zohoConnection ? "connected" : null);
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session?.user) return;
-    if (connectedGmail) {
+    if (gmailConnection?.status === "connected" && connectedGmail) {
       void loadInboxList(undefined, true, mailFolder);
     } else {
       setInbox([]);
       setSelectedThread(null);
+    }
+
+    if (gmailConnection?.status === "error") {
+      setError("Gmail authorization expired or invalid");
     }
   }
 
@@ -315,6 +325,8 @@ function GmailInboxPage() {
       <div className="grid gap-3 sm:grid-cols-2">
         {(["gmail", "zoho"] as const).map((provider) => {
           const email = provider === "gmail" ? gmailEmail : zohoEmail;
+          const status = provider === "gmail" ? gmailStatus : zohoStatus;
+          const isError = status === "error";
           return (
             <Card key={provider} className="flex items-center justify-between gap-3 px-4 py-3">
               <div className="flex min-w-0 items-center gap-3">
@@ -325,9 +337,9 @@ function GmailInboxPage() {
                   </p>
                   <p className="truncate text-sm font-medium">{email ?? "Not connected"}</p>
                 </div>
-                {email && <Badge variant="secondary">Connected</Badge>}
+                {isError ? <Badge variant="destructive">Error</Badge> : email ? <Badge variant="secondary">Connected</Badge> : null}
               </div>
-              {email && (
+              {(email || isError) && (
                 <Button
                   variant="ghost"
                   size="sm"

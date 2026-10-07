@@ -247,6 +247,15 @@ async function fetchGmailApi<T>({
   });
 
   if (response.status === 401 || response.status === 403) {
+    await (supabaseAdmin as any)
+      .from("gmail_connections")
+      .update({
+        status: "error",
+        access_token: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId)
+      .eq("provider", "gmail");
     throw new Error("Gmail authorization expired or invalid");
   }
 

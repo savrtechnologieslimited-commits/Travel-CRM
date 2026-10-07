@@ -367,6 +367,15 @@ async function fetchGmailApi<T>({
   });
 
   if (response.status === 401 || response.status === 403) {
+    await (supabaseAdmin as any)
+      .from("gmail_connections")
+      .update({
+        status: "error",
+        access_token: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId)
+      .eq("provider", "gmail");
     throw new Error("Gmail authorization expired or invalid");
   }
 
@@ -640,7 +649,7 @@ export const getConnectedMailAccounts = createServerFn({ method: "POST" })
       .from("gmail_connections")
       .select("provider,google_email,status")
       .eq("user_id", userId)
-      .eq("status", "connected");
+      .in("status", ["connected", "error"]);
     if (error) throw new Error("Unable to load connected mail accounts");
     return (data ?? []).map((row: { provider: string; google_email: string; status: string }) => ({
       provider: row.provider,

@@ -271,9 +271,9 @@ export const createWacrmContactMatchHandoffFn = createServerFn({ method: "POST" 
         phones,
       },
     });
-    const target = new URL("/crm/contact-match", wacrmAppUrl);
-    target.searchParams.set("token", token);
-    target.searchParams.set("issuer", origin);
+    const target = new URL("/inbox", wacrmAppUrl);
+    target.searchParams.set("crm_match_token", token);
+    target.searchParams.set("crm_match_issuer", origin);
     return { url: target.toString() };
   });
 

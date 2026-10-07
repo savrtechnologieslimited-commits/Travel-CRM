@@ -13,6 +13,13 @@ import { useRealtime } from "@/hooks/use-realtime";
 import { ConversationList } from "@/components/inbox/conversation-list";
 import { MessageThread } from "@/components/inbox/message-thread";
 import { ContactSidebar } from "@/components/inbox/contact-sidebar";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { WifiOff } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -20,6 +27,58 @@ import { cn } from "@/lib/utils";
 // Remembers the agent's show/hide choice for the desktop contact panel
 // across reloads and sessions (device-scoped, like the theme prefs).
 const CONTACT_PANEL_STORAGE_KEY = "wacrm:inbox:contact-panel-open";
+
+type CrmMatchConversation = {
+  id: string;
+  status: string;
+  last_message_at: string | null;
+};
+
+type CrmMatchContact = {
+  id: string;
+  name: string | null;
+  phone: string;
+  conversations: CrmMatchConversation[];
+};
+
+type CrmMatchResponse = {
+  candidates: CrmMatchContact[];
+};
+
+function isCrmMatchResponse(value: unknown): value is CrmMatchResponse {
+  if (!value || typeof value !== "object" || !("candidates" in value)) {
+    return false;
+  }
+
+  return (
+    Array.isArray(value.candidates) &&
+    value.candidates.every(
+      (candidate: unknown): candidate is CrmMatchContact =>
+        candidate !== null &&
+        typeof candidate === "object" &&
+        "id" in candidate &&
+        typeof candidate.id === "string" &&
+        "name" in candidate &&
+        (typeof candidate.name === "string" || candidate.name === null) &&
+        "phone" in candidate &&
+        typeof candidate.phone === "string" &&
+        "conversations" in candidate &&
+        Array.isArray(candidate.conversations) &&
+        candidate.conversations.every(
+          (conversation: unknown): conversation is CrmMatchConversation =>
+            conversation !== null &&
+            typeof conversation === "object" &&
+            "id" in conversation &&
+            typeof conversation.id === "string" &&
+            "status" in conversation &&
+            typeof conversation.status === "string" &&
+            "last_message_at" in conversation &&
+            (typeof conversation.last_message_at === "string" ||
+              conversation.last_message_at === null),
+        ),
+    )
+  );
+}
 
 // `useSearchParams` (the `?c=<id>` deep link below) requires a Suspense
 // boundary or the production build bails to CSR and errors out. Thin
@@ -42,12 +101,19 @@ function InboxPageInner() {
    * automatically instead of showing the empty center panel.
    */
   const deepLinkConvId = searchParams.get("c");
+  const crmMatchToken = searchParams.get("crm_match_token");
+  const crmMatchIssuer = searchParams.get("crm_match_issuer");
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeConversation, setActiveConversation] =
     useState<Conversation | null>(null);
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [crmMatchCandidates, setCrmMatchCandidates] = useState<
+    CrmMatchContact[] | null
+  >(null);
+  const [crmMatchError, setCrmMatchError] = useState<string | null>(null);
+  const handledCrmMatchRef = useRef<string | null>(null);
   const [whatsappConnected, setWhatsappConnected] = useState<boolean | null>(
     null
   );
@@ -95,6 +161,73 @@ function InboxPageInner() {
   // back to the deep-linked conversation if they've already clicked
   // elsewhere.
   const autoSelectedForDeepLinkRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!crmMatchToken || !crmMatchIssuer) return;
+    const matchKey = `${crmMatchToken}:${crmMatchIssuer}`;
+    if (handledCrmMatchRef.current === matchKey) return;
+    handledCrmMatchRef.current = matchKey;
+
+    router.replace("/inbox", { scroll: false });
+    setCrmMatchError(null);
+    setCrmMatchCandidates(null);
+
+    void fetch("/api/crm/contact-match", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-crm-origin": crmMatchIssuer,
+      },
+      body: JSON.stringify({ token: crmMatchToken }),
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        const body: unknown = await response.json();
+        if (!response.ok) {
+          const message =
+            body &&
+            typeof body === "object" &&
+            "error" in body &&
+            typeof body.error === "string"
+              ? body.error
+              : "WACRM could not match this phone number.";
+          throw new Error(message);
+        }
+        if (!isCrmMatchResponse(body)) {
+          throw new Error("WACRM returned an invalid contact-match response.");
+        }
+        return body;
+      })
+      .then((result) => {
+        if (result.candidates.length === 0) {
+          toast.info("No matching WhatsApp conversation was found. Showing recent conversations.");
+          return;
+        }
+
+        const singleContact = result.candidates.length === 1 ? result.candidates[0] : null;
+        const newestConversation = singleContact?.conversations[0];
+        if (newestConversation) {
+          router.replace(`/inbox?c=${encodeURIComponent(newestConversation.id)}`, {
+            scroll: false,
+          });
+          return;
+        }
+
+        if (singleContact && singleContact.conversations.length === 0) {
+          toast.info("No WhatsApp conversation exists for this contact. Showing recent conversations.");
+          return;
+        }
+
+        setCrmMatchCandidates(result.candidates);
+      })
+      .catch((reason: unknown) => {
+        setCrmMatchError(
+          reason instanceof Error
+            ? reason.message
+            : "WACRM contact matching failed.",
+        );
+      });
+  }, [crmMatchIssuer, crmMatchToken, router]);
 
   // Tracks conversations whose hydrate fetch is currently in flight. The
   // conv-INSERT and the first-message-INSERT events both call into
@@ -563,6 +696,67 @@ function InboxPageInner() {
 
   return (
     <div className="-m-4 flex h-[calc(100vh-3.5rem)] flex-col overflow-hidden sm:-m-6">
+      <Dialog
+        open={Boolean(crmMatchCandidates?.length || crmMatchError)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setCrmMatchCandidates(null);
+            setCrmMatchError(null);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              {crmMatchError ? "Could not find the conversation" : "Choose a conversation"}
+            </DialogTitle>
+            <DialogDescription>
+              {crmMatchError
+                ? crmMatchError
+                : "More than one WACRM contact matches this CRM record. Choose the correct chat."}
+            </DialogDescription>
+          </DialogHeader>
+          {crmMatchCandidates?.map((contact) => (
+            <section key={contact.id} className="space-y-2 rounded-lg border p-3">
+              <div>
+                <p className="font-medium">{contact.name || "Unnamed contact"}</p>
+                <p className="text-sm text-muted-foreground">{contact.phone}</p>
+              </div>
+              {contact.conversations.length > 0 ? (
+                contact.conversations.map((conversation, index) => (
+                  <button
+                    key={conversation.id}
+                    type="button"
+                    onClick={() => {
+                      setCrmMatchCandidates(null);
+                      router.replace(
+                        `/inbox?c=${encodeURIComponent(conversation.id)}`,
+                        { scroll: false },
+                      );
+                    }}
+                    className="flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm hover:bg-muted"
+                  >
+                    <span>
+                      {contact.conversations.length > 1
+                        ? `Conversation ${index + 1}`
+                        : "Open conversation"}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {conversation.status}
+                      {conversation.last_message_at
+                        ? ` · ${new Date(conversation.last_message_at).toLocaleString()}`
+                        : ""}
+                    </span>
+                  </button>
+                ))
+              ) : (
+                <p className="text-sm text-muted-foreground">No conversations for this contact.</p>
+              )}
+            </section>
+          ))}
+        </DialogContent>
+      </Dialog>
+
       {/* WhatsApp connection banner — in the flex column, not absolute,
           so it pushes the panels down instead of overlapping them. */}
       {whatsappConnected === false && (

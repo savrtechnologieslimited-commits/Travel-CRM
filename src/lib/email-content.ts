@@ -163,19 +163,25 @@ export function validateEmailAttachments(
 export function buildEmailMimeMessage({
   from,
   to,
+  cc,
+  bcc,
   subject,
   html,
   attachments,
   inlineImages,
+  plainTextOnly = false,
 }: {
   from: string;
   to: string;
+  cc?: string;
+  bcc?: string;
   subject: string;
   html: string;
   attachments: EmailAttachment[];
   inlineImages: InlineEmailImage[];
+  plainTextOnly?: boolean;
 }): string {
-  validateEmailAttachments(attachments, inlineImages);
+  validateEmailAttachments(attachments, plainTextOnly ? [] : inlineImages);
   const outerBoundary = `travel-crm-mixed-${crypto.randomUUID()}`;
   const relatedBoundary = `travel-crm-related-${crypto.randomUUID()}`;
   const alternativeBoundary = `travel-crm-alt-${crypto.randomUUID()}`;
@@ -185,44 +191,60 @@ export function buildEmailMimeMessage({
       .match(/.{1,76}/g)
       ?.join("\r\n") ?? "";
   const encodedSubject = encodeTextBase64(subject);
-  const parts = [
+  const headers = [
     `From: ${from}`,
     `To: ${to}`,
+    ...(cc ? [`Cc: ${cc}`] : []),
+    ...(bcc ? [`Bcc: ${bcc}`] : []),
     `Subject: =?UTF-8?B?${encodedSubject.replace(/\r\n/g, "")}?=`,
     "MIME-Version: 1.0",
     `Content-Type: multipart/mixed; boundary="${outerBoundary}"`,
     "",
-    `--${outerBoundary}`,
-    `Content-Type: multipart/related; boundary="${relatedBoundary}"`,
-    "",
-    `--${relatedBoundary}`,
-    `Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`,
-    "",
-    `--${alternativeBoundary}`,
-    "Content-Type: text/plain; charset=UTF-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    encodeTextBase64(plainText),
-    `--${alternativeBoundary}`,
-    "Content-Type: text/html; charset=UTF-8",
-    "Content-Transfer-Encoding: base64",
-    "",
-    encodeTextBase64(html),
-    `--${alternativeBoundary}--`,
   ];
+  const parts = plainTextOnly
+    ? [
+        ...headers,
+        `--${outerBoundary}`,
+        "Content-Type: text/plain; charset=UTF-8",
+        "Content-Transfer-Encoding: base64",
+        "",
+        encodeTextBase64(plainText),
+      ]
+    : [
+        ...headers,
+        `--${outerBoundary}`,
+        `Content-Type: multipart/related; boundary="${relatedBoundary}"`,
+        "",
+        `--${relatedBoundary}`,
+        `Content-Type: multipart/alternative; boundary="${alternativeBoundary}"`,
+        "",
+        `--${alternativeBoundary}`,
+        "Content-Type: text/plain; charset=UTF-8",
+        "Content-Transfer-Encoding: base64",
+        "",
+        encodeTextBase64(plainText),
+        `--${alternativeBoundary}`,
+        "Content-Type: text/html; charset=UTF-8",
+        "Content-Transfer-Encoding: base64",
+        "",
+        encodeTextBase64(html),
+        `--${alternativeBoundary}--`,
+      ];
 
-  for (const image of inlineImages) {
-    parts.push(
-      `--${relatedBoundary}`,
-      `Content-Type: ${image.mimeType}`,
-      "Content-Transfer-Encoding: base64",
-      `Content-ID: <${image.contentId}>`,
-      `Content-Disposition: inline; filename="${image.name}"`,
-      "",
-      image.data.match(/.{1,76}/g)?.join("\r\n") ?? "",
-    );
+  if (!plainTextOnly) {
+    for (const image of inlineImages) {
+      parts.push(
+        `--${relatedBoundary}`,
+        `Content-Type: ${image.mimeType}`,
+        "Content-Transfer-Encoding: base64",
+        `Content-ID: <${image.contentId}>`,
+        `Content-Disposition: inline; filename="${image.name}"`,
+        "",
+        image.data.match(/.{1,76}/g)?.join("\r\n") ?? "",
+      );
+    }
+    parts.push(`--${relatedBoundary}--`);
   }
-  parts.push(`--${relatedBoundary}--`);
   for (const attachment of attachments) {
     parts.push(
       `--${outerBoundary}`,

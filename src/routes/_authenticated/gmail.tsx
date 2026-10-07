@@ -12,6 +12,7 @@ import {
   UserRound,
 } from "lucide-react";
 import { PageHeader } from "@/components/app-shell";
+import { GmailCompose } from "@/components/gmail-compose";
 import { SupplierEmailTemplateDialog } from "@/components/supplier-email-template-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -124,9 +125,13 @@ function GmailInboxPage() {
     const zohoConnection = accounts.find((account) => account.provider === "zoho");
     const connectedGmail = gmailConnection?.email ?? null;
     setGmailEmail(connectedGmail);
-    setGmailStatus(gmailConnection?.status === "error" ? "error" : gmailConnection ? "connected" : null);
+    setGmailStatus(
+      gmailConnection?.status === "error" ? "error" : gmailConnection ? "connected" : null,
+    );
     setZohoEmail(zohoConnection?.email ?? null);
-    setZohoStatus(zohoConnection?.status === "error" ? "error" : zohoConnection ? "connected" : null);
+    setZohoStatus(
+      zohoConnection?.status === "error" ? "error" : zohoConnection ? "connected" : null,
+    );
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session?.user) return;
     if (gmailConnection?.status === "connected" && connectedGmail) {
@@ -282,11 +287,13 @@ function GmailInboxPage() {
       await disconnectMail({ data: { provider } });
       if (provider === "gmail") {
         setGmailEmail(null);
+        setGmailStatus(null);
         setInbox([]);
         setSelectedThread(null);
         setSelectedMessageId(null);
       } else {
         setZohoEmail(null);
+        setZohoStatus(null);
       }
     } catch (err) {
       setError(
@@ -306,6 +313,15 @@ function GmailInboxPage() {
         subtitle="Connect Gmail or Zoho Mail to send supplier enquiries directly from the CRM. Gmail also provides inbox access."
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            <GmailCompose
+              disabled={!connected}
+              onSent={() => {
+                setMailFolder("sent");
+                setSelectedMessageId(null);
+                setSelectedThread(null);
+                void loadInboxList(undefined, true, "sent");
+              }}
+            />
             <SupplierEmailTemplateDialog />
             {!gmailEmail && (
               <Button size="sm" onClick={handleConnect} disabled={connecting}>
@@ -337,7 +353,11 @@ function GmailInboxPage() {
                   </p>
                   <p className="truncate text-sm font-medium">{email ?? "Not connected"}</p>
                 </div>
-                {isError ? <Badge variant="destructive">Error</Badge> : email ? <Badge variant="secondary">Connected</Badge> : null}
+                {isError ? (
+                  <Badge variant="destructive">Error</Badge>
+                ) : email ? (
+                  <Badge variant="secondary">Connected</Badge>
+                ) : null}
               </div>
               {(email || isError) && (
                 <Button

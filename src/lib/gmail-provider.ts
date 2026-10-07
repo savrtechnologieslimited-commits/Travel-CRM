@@ -681,8 +681,11 @@ export const sendSupplierInquiryEmail = createServerFn({ method: "POST" })
       provider: "gmail" | "zoho";
       supplierId?: string | null;
       to: string;
+      cc?: string;
+      bcc?: string;
       subject: string;
       body: string;
+      plainTextOnly?: boolean;
       attachments?: EmailAttachment[];
     }) => data,
   )
@@ -718,22 +721,28 @@ export const sendSupplierInquiryEmail = createServerFn({ method: "POST" })
     }
     const subject = data.subject.replace(/[\r\n]+/g, " ").trim();
     const { html: body, inlineImages } = prepareEmailHtml(bodyInput);
-    const recipients = data.to
-      .split(",")
-      .map((email) => email.trim())
-      .filter(Boolean);
+    const parseRecipients = (value: string | undefined) =>
+      (value ?? "")
+        .split(",")
+        .map((email) => email.trim())
+        .filter(Boolean);
+    const recipients = parseRecipients(data.to);
+    const ccRecipients = parseRecipients(data.cc);
+    const bccRecipients = parseRecipients(data.bcc);
     const emailPattern = /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/;
     if (
       !recipients.length ||
       recipients.length > 10 ||
-      recipients.some((email) => !emailPattern.test(email))
+      [...recipients, ...ccRecipients, ...bccRecipients].length > 30 ||
+      [...recipients, ...ccRecipients, ...bccRecipients].some((email) => !emailPattern.test(email))
     ) {
-      throw new Error("Enter one to ten valid recipient email addresses, separated by commas");
+      throw new Error(
+        "Enter valid recipient email addresses, separated by commas (up to 30 total)",
+      );
     }
     const to = recipients.join(", ");
-    if (!subject || (!htmlToPlainText(body) && !/<img\b/i.test(body))) {
-      throw new Error("Email subject and message are required");
-    }
+    const cc = ccRecipients.join(", ");
+    const bcc = bccRecipients.join(", ");
     validateEmailAttachments(attachments, inlineImages);
 
     const supabaseAdmin = await getSupabaseAdminClient();
@@ -803,10 +812,13 @@ export const sendSupplierInquiryEmail = createServerFn({ method: "POST" })
       const mimeMessage = buildEmailMimeMessage({
         from: connection.google_email,
         to,
+        cc,
+        bcc,
         subject,
         html: body,
         attachments,
         inlineImages,
+        plainTextOnly: data.plainTextOnly,
       });
       const raw = btoa(unescape(encodeURIComponent(mimeMessage)))
         .replace(/\+/g, "-")
@@ -974,9 +986,11 @@ export const sendSupplierInquiryEmail = createServerFn({ method: "POST" })
           body: JSON.stringify({
             fromAddress: connection.google_email,
             toAddress: to,
+            ...(cc ? { ccAddress: cc } : {}),
+            ...(bcc ? { bccAddress: bcc } : {}),
             subject,
-            content: zohoBody,
-            mailFormat: "html",
+            content: data.plainTextOnly ? htmlToPlainText(zohoBody) : zohoBody,
+            mailFormat: data.plainTextOnly ? "text" : "html",
             encoding: "UTF-8",
             attachments: [...uploadedInline, ...uploadedAttachments].map((attachment) => ({
               attachmentName: attachment.attachmentName,

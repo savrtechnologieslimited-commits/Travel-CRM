@@ -166,7 +166,7 @@ function AssignedItineraryCard({
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <Button type="button" size="sm" variant="outline" asChild>
-            <Link to="/itinerary-builder" search={{ itineraryId: itinerary.id, preview: "1" }}>
+            <Link to="/itinerary-builder" search={{ itineraryId: itinerary.id, preview: true }}>
               <Eye className="mr-1.5 size-4" />
               Review
             </Link>

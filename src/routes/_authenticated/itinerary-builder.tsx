@@ -7654,10 +7654,12 @@ function ItineraryBuilderPage() {
   }, []);
 
   useEffect(() => {
+    const previewParam = new URLSearchParams(window.location.search).get("preview");
+    const shouldOpenPreview = ["1", '"1"', "true", '"true"'].includes(previewParam ?? "");
     if (
       !draftReady ||
       !currentItineraryId ||
-      new URLSearchParams(window.location.search).get("preview") !== "1" ||
+      !shouldOpenPreview ||
       assignedItineraryPreviewOpenedRef.current
     )
       return;

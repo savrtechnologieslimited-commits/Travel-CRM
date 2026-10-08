@@ -20,9 +20,6 @@ export const createWacrmBridgeTokenFn = createServerFn({ method: "POST" })
     } = await context.supabase.auth.getUser(accessToken);
     if (error || !user) throw new Error("CRM authentication could not be verified.");
     if (!user.email || !user.email_confirmed_at) {
-
-
-      
       throw new Error("Verify your CRM email before opening WACRM.");
     }
 

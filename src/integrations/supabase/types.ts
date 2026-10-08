@@ -2714,6 +2714,7 @@ export type Database = {
           budget: number | null;
           budget_inr: number | null;
           children: number;
+          city_nights: Json;
           code: string | null;
           created_at: string;
           created_by: string | null;
@@ -2757,6 +2758,7 @@ export type Database = {
           budget?: number | null;
           budget_inr?: number | null;
           children?: number;
+          city_nights?: Json;
           code?: string | null;
           created_at?: string;
           created_by?: string | null;
@@ -2800,6 +2802,7 @@ export type Database = {
           budget?: number | null;
           budget_inr?: number | null;
           children?: number;
+          city_nights?: Json;
           code?: string | null;
           created_at?: string;
           created_by?: string | null;

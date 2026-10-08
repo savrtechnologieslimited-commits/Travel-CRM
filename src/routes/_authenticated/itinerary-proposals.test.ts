@@ -19,7 +19,6 @@ describe("itinerary creation workspace", () => {
     expect(ITINERARY_WORKSPACE_COLUMNS).toEqual([
       "Itinerary ID",
       "Destination/Title",
-      "Version",
       "Travel Dates",
       "Adults",
       "Children",
@@ -30,15 +29,13 @@ describe("itinerary creation workspace", () => {
     ]);
   });
 
-  test("supports package and flight/visa proposal tabs but keeps B2B honest", () => {
+  test("supports package and flight/visa proposal tabs", () => {
     expect(PROPOSAL_TABS.map((tab) => tab.label)).toEqual([
       "Package Itinerary",
       "Flight/Visa/Other Proposal",
-      "B2B Proposal",
     ]);
     expect(PROPOSAL_TABS[0].disabled).toBe(false);
     expect(PROPOSAL_TABS[1].disabled).toBe(false);
-    expect(PROPOSAL_TABS[2].disabled).toBe(true);
   });
 
   test("maps existing itinerary relationships and dates without inventing values", () => {

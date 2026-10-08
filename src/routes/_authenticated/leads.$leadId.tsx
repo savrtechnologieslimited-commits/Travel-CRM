@@ -60,6 +60,7 @@ function LeadDetailPage() {
   const {
     data: itineraries = [],
     isLoading: itinerariesLoading,
+    isFetching: itinerariesFetching,
     isError: itinerariesError,
     error: itinerariesLoadError,
   } = useLeadItineraries(leadId);
@@ -375,13 +376,21 @@ function LeadDetailPage() {
                 </div>
               )}
               <div className="flex flex-wrap gap-2">
-                <Link
-                  to="/itinerary-builder"
-                  search={{ leadId: lead.id }}
-                  className="text-sm text-primary hover:underline"
-                >
-                  Create itinerary
-                </Link>
+                {itinerariesLoading || itinerariesFetching ? (
+                  <span className="text-sm text-muted-foreground">Checking itineraries…</span>
+                ) : (
+                  !itinerariesError && (
+                    <Link
+                      to="/itinerary-builder"
+                      search={
+                        itineraries[0] ? { itineraryId: itineraries[0].id } : { leadId: lead.id }
+                      }
+                      className="text-sm text-primary hover:underline"
+                    >
+                      {itineraries[0] ? "Open latest itinerary" : "Create itinerary"}
+                    </Link>
+                  )
+                )}
                 <Link to="/itinerary-library" className="text-sm text-primary hover:underline">
                   Open library
                 </Link>

@@ -37,13 +37,11 @@ export const Route = createFileRoute("/_authenticated/itinerary-proposals")({
 export const PROPOSAL_TABS = [
   { value: "package", label: "Package Itinerary", disabled: false },
   { value: "other", label: "Flight/Visa/Other Proposal", disabled: false },
-  { value: "b2b", label: "B2B Proposal", disabled: true },
 ] as const;
 
 export const ITINERARY_WORKSPACE_COLUMNS = [
   "Itinerary ID",
   "Destination/Title",
-  "Version",
   "Travel Dates",
   "Adults",
   "Children",
@@ -165,7 +163,6 @@ function ItineraryProposalsPage() {
               <TableRow className="bg-slate-50 hover:bg-slate-50">
                 <TableHead>Itinerary ID</TableHead>
                 <TableHead>Destination/Title</TableHead>
-                <TableHead>Version</TableHead>
                 <TableHead>Travel Dates</TableHead>
                 <TableHead>Adults</TableHead>
                 <TableHead>Children</TableHead>
@@ -247,7 +244,7 @@ function DraftCard({ draft }: { draft: ItineraryDraftWorkspaceRow }) {
 function TableMessage({ children }: { children: React.ReactNode }) {
   return (
     <TableRow>
-      <TableCell colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
+      <TableCell colSpan={9} className="py-10 text-center text-sm text-muted-foreground">
         {children}
       </TableCell>
     </TableRow>
@@ -264,7 +261,6 @@ function ItineraryRow({ itinerary }: { itinerary: ItineraryWorkspaceRow }) {
       <TableCell className="max-w-[220px] py-2.5">
         <div className="truncate font-medium">{getItineraryDisplayTitle(itinerary)}</div>
       </TableCell>
-      <TableCell className="py-2.5">{itinerary.version ?? "-"}</TableCell>
       <TableCell className="whitespace-nowrap py-2.5">{getItineraryTravelDates(itinerary)}</TableCell>
       <TableCell className="py-2.5">{itinerary.adults ?? "-"}</TableCell>
       <TableCell className="py-2.5">{itinerary.children ?? "-"}</TableCell>

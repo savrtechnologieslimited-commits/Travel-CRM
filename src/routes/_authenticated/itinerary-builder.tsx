@@ -7411,13 +7411,13 @@ function ItineraryBuilderPage() {
         const { data: lead, error } = await supabase
           .from("leads")
           .select(
-            "id,customer_id,customer_name,destination_text,destination_id,travel_start,travel_end,adults,children,assigned_to",
+            "id,customer_id,customer_name,scope,destination_text,destination_id,travel_start,travel_end,adults,children,infants,city_nights,hotel_category,trip_type,budget,currency,flexible_dates,meal_preference,transport_preference,special_requirements,notes,assigned_to",
           )
           .eq("id", leadIdFromQuery)
           .maybeSingle();
         if (cancelled) return;
         if (error || !lead) setMessage(error?.message ?? "Unable to load the selected lead.");
-        else
+        else {
           setForm((current) => ({
             ...current,
             lead_id: lead.id,
@@ -7430,6 +7430,45 @@ function ItineraryBuilderPage() {
             children: String(lead.children ?? 0),
             assigned_to: lead.assigned_to ?? current.assigned_to,
           }));
+          const cityNights = Array.isArray(lead.city_nights)
+            ? lead.city_nights
+                .flatMap((entry) => {
+                  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return [];
+                  const city = entry["city"];
+                  const nights = entry["nights"];
+                  if (typeof city !== "string" || !city.trim()) return [];
+                  return [`${city.trim()}${typeof nights === "number" ? ` (${nights} nights)` : ""}`];
+                })
+                .join(", ")
+            : "";
+          setQuickPrompt((current) =>
+            current ||
+            [
+              `Customer: ${lead.customer_name}`,
+              `Trip: ${lead.destination_text ?? "Destination not specified"}`,
+              `Travel scope: ${lead.scope}`,
+              `Travel dates: ${lead.travel_start ?? "Not set"} to ${lead.travel_end ?? "Not set"}`,
+              `Travellers: ${lead.adults ?? 1} adults, ${lead.children ?? 0} children, ${lead.infants ?? 0} infants`,
+              cityNights ? `City-wise nights: ${cityNights}` : "",
+              lead.flexible_dates ? "Travel dates are flexible" : "",
+              lead.budget == null
+                ? "Budget: Not provided"
+                : `Budget: ${lead.currency ?? "INR"} ${Number(lead.budget).toLocaleString("en-IN")}`,
+              `Trip type: ${lead.trip_type ?? "Not specified"}`,
+              `Hotel category: ${lead.hotel_category ?? "Not specified"}`,
+              lead.meal_preference ? `Meal preference: ${lead.meal_preference}` : "",
+              lead.transport_preference
+                ? `Transport preference: ${lead.transport_preference}`
+                : "",
+              lead.special_requirements
+                ? `Special requirements: ${lead.special_requirements}`
+                : "",
+              lead.notes ? `Lead notes: ${lead.notes}` : "",
+            ]
+              .filter(Boolean)
+              .join("\n"),
+          );
+        }
       } else if (!generatedDraftMode && customerIdFromQuery) {
         setForm((current) => ({ ...current, customer_id: customerIdFromQuery }));
       } else if (!generatedDraftMode && destinationId) {
@@ -9193,6 +9232,9 @@ function ItineraryBuilderPage() {
         "Itinerary saved with day content, inclusions, exclusions, photos, custom metadata and internal cost lines.",
       );
       toast.success("Itinerary saved");
+      if (form.lead_id) {
+        void queryClient.invalidateQueries({ queryKey: ["lead-itineraries", form.lead_id] });
+      }
       if (copyMode) setCopyMode(false);
       if (resetAfterSave) {
         setForm(EMPTY_FORM);

@@ -14,6 +14,8 @@ export type LiveFlightOffer = {
   return_flight_number?: string;
   return_duration?: string;
   return_stops?: number;
+  stop_details?: string;
+  return_stop_details?: string;
   baggage_information?: string;
   return_baggage_information?: string;
   duration: string;
@@ -44,6 +46,8 @@ export type FlightDetailsDraft = {
   return_arrival_at: string | null;
   return_duration: string | null;
   return_stops: number | null;
+  stop_details: string | null;
+  return_stop_details: string | null;
   baggage_information: string | null;
   return_baggage_information: string | null;
 };

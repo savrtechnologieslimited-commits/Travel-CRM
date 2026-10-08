@@ -89,7 +89,6 @@ const AIRLINE_BY_CODE: Record<string, string> = {
 
 const TIME_PATTERN =
   /\b(\d{1,2})(?::([0-5]\d))?\s*([AP]\.?M\.?)\b|\b([01]?\d|2[0-3]):([0-5]\d)\b/gi;
-const FLIGHT_NUMBER_PATTERN = /\b([A-Z0-9]{2})\s*[- ]?\s*(\d{1,4}[A-Z]?)\b/gi;
 
 type ParseOptions = {
   departureDate?: string;
@@ -235,15 +234,32 @@ function routeCandidates(text: string) {
   );
 }
 
+function airportCodes(text: string): string[] {
+  return [...text.matchAll(/\(([A-Z]{3})\)/g)]
+    .map((match) => match[1]!.toUpperCase())
+    .filter((code, index, codes) => index === 0 || code !== codes[index - 1]);
+}
+
+function overallRoute(text: string): readonly [string, string] | null {
+  const codes = airportCodes(text);
+  if (codes.length >= 2) return [codes[0]!, codes[codes.length - 1]!];
+  return routeCandidates(text)[0] ?? null;
+}
+
 function flightNumbers(text: string): string[] {
-  return [...text.matchAll(FLIGHT_NUMBER_PATTERN)]
-    .map((match) => `${match[1]}${match[2]}`.toUpperCase())
-    .filter((value, index, all) => all.indexOf(value) === index);
+  const numbers = Object.keys(AIRLINE_BY_CODE).flatMap((code) => {
+    const pattern = new RegExp(`${code}\\s*[- ]?\\s*(\\d{1,4}[A-Z]?)\\b`, "gi");
+    return [...text.matchAll(pattern)].map((match) => `${code}${match[1]!.toUpperCase()}`);
+  });
+  return numbers.filter((value, index, all) => all.indexOf(value) === index);
 }
 
 function airlines(text: string): string[] {
   const names = AIRLINE_NAMES.filter((name) =>
-    new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`, "i").test(text),
+    new RegExp(
+      `\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\s|Economy|Business|Premium|First|$)`,
+      "i",
+    ).test(text),
   );
   const byCode = flightNumbers(text)
     .map((number) => AIRLINE_BY_CODE[number.match(/^[A-Z0-9]+/)?.[0] ?? ""])
@@ -252,8 +268,12 @@ function airlines(text: string): string[] {
 }
 
 function durationValues(text: string): string[] {
+  const withoutLayoverDurations = text.replace(
+    /\b\d+\s*(?:hours?|hrs?|h|minutes?|mins?|m)\s*layover/gi,
+    "",
+  );
   return [
-    ...text.matchAll(
+    ...withoutLayoverDurations.matchAll(
       /\b(\d+)\s*(?:hours?|hrs?|h)(?:\s*(\d+)\s*(?:minutes?|mins?|m))?|\b(\d+)\s*(?:minutes?|mins?|m)\b/gi,
     ),
   ].map((match) => {
@@ -263,10 +283,38 @@ function durationValues(text: string): string[] {
   });
 }
 
-function stopCount(text: string): number | null {
+function stopCount(text: string, segmentCount: number): number | null {
   if (/\bnon[\s-]?stop\b|\bdirect(?: flight)?\b/i.test(text)) return 0;
   const match = text.match(/\b(\d+)\s+stops?\b/i);
-  return match ? Number(match[1]) : null;
+  return match ? Number(match[1]) : segmentCount > 1 ? segmentCount - 1 : null;
+}
+
+function totalDuration(durations: string[]): string | null {
+  if (!durations.length) return null;
+  const totalMinutes = durations.reduce((total, duration) => {
+    const hours = Number(duration.match(/(\d+)h/i)?.[1] ?? 0);
+    const minutes = Number(duration.match(/(\d+)m/i)?.[1] ?? 0);
+    return total + hours * 60 + minutes;
+  }, 0);
+  if (!totalMinutes) return null;
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours ? `${hours}h` : ""}${hours && minutes ? " " : ""}${minutes ? `${minutes}m` : ""}`;
+}
+
+function stopDetails(text: string, count: number | null, codes: string[]): string | null {
+  if (count === null) return null;
+  if (count === 0) return "Non-stop";
+  const intermediateCodes = codes.slice(1, -1);
+  const via = intermediateCodes.length ? ` via ${intermediateCodes.join(", ")}` : "";
+  const layovers = [
+    ...text.matchAll(/\b(\d+\s*(?:hours?|hrs?|h|minutes?|mins?|m))\s*layover([^\r\n]*)/gi),
+  ].map((match) => {
+    const duration = match[1]!.replace(/\s+/g, " ").trim();
+    const location = (match[2] ?? "").trim();
+    return location ? `${duration} layover at ${location}` : `${duration} layover`;
+  });
+  return [`${count} ${count === 1 ? "stop" : "stops"}${via}`, ...layovers].join(" · ");
 }
 
 function baggageInformation(text: string): string | null {
@@ -330,9 +378,9 @@ function parsePrice(text: string, defaultCurrency?: string) {
 }
 
 function legData(text: string, expectedDate?: string, timeOffset = 0) {
-  const times = parseTimes(text);
-  const departureTime = times[timeOffset] ?? null;
-  const arrivalTime = times[timeOffset + 1] ?? null;
+  const times = parseTimes(text).slice(timeOffset);
+  const departureTime = times[0] ?? null;
+  const arrivalTime = times.at(-1) ?? null;
   const departureDate = parseDate(text, expectedDate);
   const arrivalDate = dateForArrival(departureDate, departureTime, arrivalTime);
   return {
@@ -349,44 +397,54 @@ export function parseFlightDetailsFromText(
   const sections = sectionsFrom(text);
   const outboundSection = sections.find((section) => !section.isReturn)?.text ?? text;
   const returnSection = sections.find((section) => section.isReturn)?.text;
-  const routes = routeCandidates(text);
-  const numbers = flightNumbers(text);
-  const carriers = airlines(text);
-  const durations = durationValues(text);
+  const outboundCodes = airportCodes(outboundSection);
+  const outboundRoute = overallRoute(outboundSection);
+  const outboundNumbers = flightNumbers(outboundSection);
+  const carriers = airlines(outboundSection);
+  const outboundDurations = durationValues(outboundSection);
   const outbound = legData(outboundSection, options.departureDate);
   const hasReturn = Boolean(returnSection || /\bround[\s-]?trip\b/i.test(text));
+  const returnCodes = returnSection ? airportCodes(returnSection) : [];
+  const returnRouteFromText = returnSection ? overallRoute(returnSection) : null;
+  const returnNumbers = returnSection ? flightNumbers(returnSection) : [];
+  const returnDurations = returnSection ? durationValues(returnSection) : [];
   const returnData = hasReturn
     ? legData(returnSection ?? text, options.returnDate, returnSection ? 0 : 2)
     : { departure_at: null, arrival_at: null };
   const price = parsePrice(text, options.currency);
-  const cabinMatch = text.match(/\b(premium economy|economy|business|first(?: class)?)\b/i);
+  const cabinMatch = text.match(/(premium\s+economy|economy|business|first(?:\s+class)?)/i);
   const cabin = cabinMatch?.[1]
     ? cabinMatch[1].replace(/\b\w/g, (character) => character.toUpperCase())
     : null;
-  const outboundRoute =
-    routes[0] ??
+  const resolvedOutboundRoute =
+    outboundRoute ??
     (options.from && options.to
       ? ([options.from.toUpperCase(), options.to.toUpperCase()] as const)
       : null);
   const returnRoute =
-    routes[1] ?? (outboundRoute ? ([outboundRoute[1], outboundRoute[0]] as const) : null);
+    returnRouteFromText ??
+    (resolvedOutboundRoute
+      ? ([resolvedOutboundRoute[1], resolvedOutboundRoute[0]] as const)
+      : null);
   const returnCarrier = returnSection
     ? (airlines(returnSection)[0] ?? null)
     : (carriers[1] ?? carriers[0] ?? null);
-  const returnNumber = (returnSection ? flightNumbers(returnSection)[0] : numbers[1]) ?? null;
-  const returnDuration = (returnSection ? durationValues(returnSection)[0] : durations[1]) ?? null;
-  const returnStops = returnSection ? stopCount(returnSection) : hasReturn ? stopCount(text) : null;
+  const returnNumber = returnSection ? returnNumbers.join(" / ") || null : null;
+  const returnDuration = returnSection ? totalDuration(returnDurations) : null;
+  const outboundStops = stopCount(outboundSection, outboundNumbers.length);
+  const returnStops = returnSection ? stopCount(returnSection, returnNumbers.length) : null;
 
   return {
     has_return: hasReturn,
     airline: carriers[0] ?? null,
-    flight_number: flightNumbers(outboundSection)[0] ?? numbers[0] ?? null,
-    from: outboundRoute?.[0] ?? null,
-    to: outboundRoute?.[1] ?? null,
+    flight_number: outboundNumbers.join(" / ") || null,
+    from: resolvedOutboundRoute?.[0] ?? null,
+    to: resolvedOutboundRoute?.[1] ?? null,
     departure_at: outbound.departure_at,
     arrival_at: outbound.arrival_at,
-    duration: durationValues(outboundSection)[0] ?? durations[0] ?? null,
-    stops: stopCount(outboundSection),
+    duration: totalDuration(outboundDurations),
+    stops: outboundStops,
+    stop_details: stopDetails(outboundSection, outboundStops, outboundCodes),
     price: Number.isFinite(price.price) ? price.price : null,
     currency: price.currency,
     cabin,
@@ -398,6 +456,9 @@ export function parseFlightDetailsFromText(
     return_arrival_at: returnData.arrival_at,
     return_duration: hasReturn ? returnDuration : null,
     return_stops: hasReturn ? returnStops : null,
+    return_stop_details: returnSection
+      ? stopDetails(returnSection, returnStops, returnCodes)
+      : null,
     baggage_information: baggageInformation(outboundSection),
     return_baggage_information: returnSection ? baggageInformation(returnSection) : null,
   };

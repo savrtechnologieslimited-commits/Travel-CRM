@@ -99,4 +99,40 @@ describe("free flight detail parsing", () => {
     });
     expect(parseFlightDetailsFromText("Depart 03/04/2026 at 10:00 AM").departure_at).toBeNull();
   });
+
+  test("extracts the full connecting itinerary and excludes layover time from flight duration", () => {
+    const result = parseFlightDetailsFromText(
+      "Departing flightTue, Oct 20\n" +
+        "342 kg CO2e\n+130% emissions\n" +
+        "7:10 AMRajiv Gandhi International Airport (HYD)\n" +
+        "Travel time: 50 min\n" +
+        "8:00 AMShri Guru Gobind Singh Ji Airport Nanded (NDC)\n" +
+        "Star AirEconomy\nEmbraer 175S5 196\n" +
+        "- Emissions estimate: 125 kg CO2e\n" +
+        "- Contrail warming potential: Low\n" +
+        "30 min layoverNanded (NDC)\n" +
+        "8:30 AMShri Guru Gobind Singh Ji Airport Nanded (NDC)\n" +
+        "Travel time: 1 hr 30 min\n" +
+        "10:00 AMSardar Vallabhbhai Patel International Airport (AMD)\n" +
+        "Star AirEconomy\nEmbraer 175S5 218",
+      {
+        departureDate: "2026-10-20",
+        from: "HYD",
+        to: "AMD",
+      },
+    );
+
+    expect(result).toMatchObject({
+      from: "HYD",
+      to: "AMD",
+      airline: "Star Air",
+      flight_number: "S5196 / S5218",
+      departure_at: "2026-10-20T07:10",
+      arrival_at: "2026-10-20T10:00",
+      duration: "2h 20m",
+      stops: 1,
+      stop_details: "1 stop via NDC · 30 min layover at Nanded (NDC)",
+      cabin: "Economy",
+    });
+  });
 });

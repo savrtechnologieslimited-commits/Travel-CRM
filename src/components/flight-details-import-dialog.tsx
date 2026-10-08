@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { ClipboardPaste, FileUp, LoaderCircle, Sparkles } from "lucide-react";
+import { useEffect, useState, type ClipboardEvent } from "react";
+import { ClipboardPaste, ImagePlus, LoaderCircle, Sparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -42,11 +42,22 @@ export function FlightDetailsImportDialog({
   const [open, setOpen] = useState(false);
   const [sourceText, setSourceText] = useState("");
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreviewUrl, setImagePreviewUrl] = useState("");
   const [draft, setDraft] = useState<FlightDetailsDraft | null>(null);
   const [includeReturn, setIncludeReturn] = useState(false);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!selectedImage) {
+      setImagePreviewUrl("");
+      return;
+    }
+    const previewUrl = URL.createObjectURL(selectedImage);
+    setImagePreviewUrl(previewUrl);
+    return () => URL.revokeObjectURL(previewUrl);
+  }, [selectedImage]);
 
   const updateDraft = <K extends keyof FlightDetailsDraft>(
     key: K,
@@ -80,6 +91,36 @@ export function FlightDetailsImportDialog({
         "Clipboard access was blocked. Click in the text box and paste with Ctrl+V (or Cmd+V).",
       );
     }
+  };
+
+  const handleScreenshotPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const imageItem = Array.from(event.clipboardData.items).find(
+      (item) => item.kind === "file" && item.type.startsWith("image/"),
+    );
+    const image = imageItem?.getAsFile();
+    if (!image) return;
+
+    event.preventDefault();
+    setError("");
+    setDraft(null);
+    setSourceText("");
+    if (!["image/png", "image/jpeg", "image/webp"].includes(image.type)) {
+      setSelectedImage(null);
+      setError("Paste a PNG, JPEG, or WebP screenshot.");
+      return;
+    }
+    if (image.size > MAX_IMAGE_BYTES) {
+      setSelectedImage(null);
+      setError("The pasted screenshot is larger than 10 MB. Paste a smaller screenshot.");
+      return;
+    }
+    setSelectedImage(
+      new File([image], image.name || "pasted-flight-screenshot.png", {
+        type: image.type,
+        lastModified: Date.now(),
+      }),
+    );
+    setStatus("Screenshot pasted. Choose Analyze to read and fill the flight fields.");
   };
 
   const analyzeSource = async () => {
@@ -198,6 +239,7 @@ export function FlightDetailsImportDialog({
       arrival_at: draft.arrival_at,
       duration: draft.duration?.trim() ?? "",
       ...(draft.stops !== null ? { stops: draft.stops } : {}),
+      ...(draft.stop_details ? { stop_details: draft.stop_details } : {}),
       price: draft.price ?? 0,
       currency: resolvedCurrency,
       ...(draft.cabin?.trim() ? { cabin: draft.cabin.trim() } : {}),
@@ -212,6 +254,9 @@ export function FlightDetailsImportDialog({
               ? { return_duration: draft.return_duration.trim() }
               : {}),
             ...(draft.return_stops !== null ? { return_stops: draft.return_stops } : {}),
+            ...(draft.return_stop_details
+              ? { return_stop_details: draft.return_stop_details }
+              : {}),
             ...(draft.return_baggage_information
               ? { return_baggage_information: draft.return_baggage_information }
               : {}),
@@ -259,7 +304,7 @@ export function FlightDetailsImportDialog({
   return (
     <>
       <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>
-        <FileUp className="mr-2 size-4" />
+        <ImagePlus className="mr-2 size-4" />
         Add selected flight
       </Button>
       <Dialog open={open} onOpenChange={closeDialog}>
@@ -267,9 +312,9 @@ export function FlightDetailsImportDialog({
           <DialogHeader>
             <DialogTitle>Import selected flight</DialogTitle>
             <DialogDescription>
-              Paste copied flight details or upload a screenshot. Screenshot OCR and field
-              extraction run in your browser; the image and text are not sent to an AI service. No
-              paid flight-search or AI API is used.
+              Paste copied flight details or a screenshot from your clipboard. Screenshot OCR and
+              field extraction run in your browser; the image and text are not sent to an AI
+              service. No paid flight-search or AI API is used.
             </DialogDescription>
           </DialogHeader>
 
@@ -277,7 +322,7 @@ export function FlightDetailsImportDialog({
             <div className="space-y-4">
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
-                  <Label htmlFor="flight-import-source">Copied flight text</Label>
+                  <Label htmlFor="flight-import-source">Paste flight text or a screenshot</Label>
                   <Button
                     type="button"
                     size="sm"
@@ -286,41 +331,61 @@ export function FlightDetailsImportDialog({
                     disabled={busy}
                   >
                     <ClipboardPaste className="mr-2 size-4" />
-                    Paste from clipboard
+                    Paste text from clipboard
                   </Button>
                 </div>
                 <Textarea
                   id="flight-import-source"
                   value={sourceText}
+                  onPaste={handleScreenshotPaste}
                   onChange={(event) => {
                     setSourceText(event.target.value);
                     setSelectedImage(null);
                     setError("");
                   }}
-                  placeholder="Paste the selected itinerary details here…"
-                  rows={7}
+                  placeholder="Click here and press Ctrl+V (or Cmd+V) to paste a screenshot or copied flight details…"
+                  rows={5}
                   maxLength={20_001}
                   disabled={busy}
                 />
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="flight-import-image">Or upload a screenshot</Label>
-                <Input
-                  id="flight-import-image"
-                  type="file"
-                  accept="image/png,image/jpeg,image/webp"
-                  disabled={busy}
-                  onChange={(event) => {
-                    const image = event.target.files?.[0] ?? null;
-                    setSelectedImage(image);
-                    setDraft(null);
-                    setError("");
-                  }}
-                />
-                {selectedImage && (
-                  <p className="text-xs text-muted-foreground">Selected: {selectedImage.name}</p>
-                )}
-              </div>
+              {selectedImage && (
+                <div className="flex items-start gap-3 rounded-md border bg-muted/30 p-3">
+                  {imagePreviewUrl && (
+                    <img
+                      src={imagePreviewUrl}
+                      alt="Pasted flight screenshot preview"
+                      className="max-h-36 max-w-[65%] rounded border bg-white object-contain"
+                    />
+                  )}
+                  <div className="min-w-0 flex-1 text-sm">
+                    <p className="font-medium">Screenshot ready to analyze</p>
+                    <p className="text-xs text-muted-foreground">
+                      {selectedImage.name} · {(selectedImage.size / 1024).toFixed(0)} KB
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="ghost"
+                    aria-label="Remove pasted screenshot"
+                    disabled={busy}
+                    onClick={() => {
+                      setSelectedImage(null);
+                      setStatus("");
+                    }}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
+              )}
+              {!selectedImage && (
+                <p className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <ImagePlus className="size-4" />
+                  Copy a screenshot, click the text box above, then press Ctrl+V / Cmd+V. Your
+                  screenshot stays in this browser.
+                </p>
+              )}
               <div className="flex justify-end">
                 <Button
                   type="button"
@@ -370,11 +435,12 @@ export function FlightDetailsImportDialog({
                     </p>
                     <p className="mt-1 text-muted-foreground">
                       {draft.duration || "Duration unknown"} ·{" "}
-                      {draft.stops === null
-                        ? "Stops unknown"
-                        : draft.stops === 0
-                          ? "Non-stop"
-                          : `${draft.stops} stop(s)`}
+                      {draft.stop_details ||
+                        (draft.stops === null
+                          ? "Stops unknown"
+                          : draft.stops === 0
+                            ? "Non-stop"
+                            : `${draft.stops} stop(s)`)}
                     </p>
                   </div>
                   {includeReturn && (
@@ -393,11 +459,12 @@ export function FlightDetailsImportDialog({
                       </p>
                       <p className="mt-1 text-muted-foreground">
                         {draft.return_duration || "Duration unknown"} ·{" "}
-                        {draft.return_stops === null
-                          ? "Stops unknown"
-                          : draft.return_stops === 0
-                            ? "Non-stop"
-                            : `${draft.return_stops} stop(s)`}
+                        {draft.return_stop_details ||
+                          (draft.return_stops === null
+                            ? "Stops unknown"
+                            : draft.return_stops === 0
+                              ? "Non-stop"
+                              : `${draft.return_stops} stop(s)`)}
                       </p>
                     </div>
                   )}

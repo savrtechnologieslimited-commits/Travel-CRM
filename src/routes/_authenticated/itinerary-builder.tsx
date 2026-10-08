@@ -1304,10 +1304,15 @@ function AiDayPlanPanel({
 }) {
   const [mode, setMode] = useState<"saved" | "complete">(initialPrompt ? "complete" : "saved");
   const [details, setDetails] = useState("");
+  const [promptText, setPromptText] = useState(initialPrompt ?? "");
+  const [promptPreset, setPromptPreset] = useState("custom");
   const [file, setFile] = useState<File | null>(null);
   const [hasExtractedFile, setHasExtractedFile] = useState(false);
   useEffect(() => {
-    if (initialPrompt) setMode("complete");
+    if (initialPrompt) {
+      setMode("complete");
+      setPromptText(initialPrompt);
+    }
   }, [initialPrompt]);
   useEffect(() => {
     if (!initialDetails?.trim()) return;
@@ -5211,11 +5216,7 @@ function ItineraryBuilderPage() {
     const relationship: Partial<TripForm> = selectedLead
       ? { lead_id: selectedLead.id, customer_id: selectedLead.customer_id ?? "", enquiry_id: "" }
       : { lead_id: "", customer_id: selectedCustomer!.id, enquiry_id: "" };
-    if (
-      currentItineraryId &&
-      relationship.customer_id &&
-      selectedCustomer
-    ) {
+    if (currentItineraryId && relationship.customer_id && selectedCustomer) {
       const params = new URLSearchParams({
         copyFrom: currentItineraryId,
         customerId: relationship.customer_id,
@@ -5250,7 +5251,7 @@ function ItineraryBuilderPage() {
         children: Number(form.children) || 0,
       };
 
-      let assignedItineraryId = currentItineraryId;
+      const assignedItineraryId = currentItineraryId;
       if (assignedItineraryId && !copyMode) {
         const { data, error } = await supabase
           .from("itineraries")
@@ -6309,23 +6310,28 @@ function ItineraryBuilderPage() {
         const bytes = new Uint8Array(binary.length);
         for (let index = 0; index < binary.length; index += 1)
           bytes[index] = binary.charCodeAt(index);
-        const candidate = await extractDocumentCandidate({
+        const candidate = await extractDocumentCandidate(
+          {
             fileName: input.fileName,
             mimeType: input.mimeType ?? "application/octet-stream",
             file: bytes as unknown as Buffer,
-        }, (progress) => {
+          },
+          (progress) => {
             const pageLabel =
               progress.page && progress.totalPages
                 ? `Page ${progress.page} of ${progress.totalPages}`
                 : "PDF";
             if (progress.stage === "loading_ocr") {
-            setMessage("Loading on-device OCR engine. The first scanned document can take longer.");
+              setMessage(
+                "Loading on-device OCR engine. The first scanned document can take longer.",
+              );
             } else if (progress.stage === "recognizing") {
               setMessage(`Extracting text from ${pageLabel}…`);
             } else {
               setMessage(`Reading ${pageLabel}…`);
             }
-        });
+          },
+        );
         extractedText = candidate.text.trim();
         if (!extractedText && browserRuntime) {
           setSupplierDetails(null);
@@ -6413,8 +6419,7 @@ function ItineraryBuilderPage() {
           title: item.hotel_name || hotel.name || match.name,
           hotel_address: item.hotel_address || hotel.address || match.address,
           hotel_city: item.hotel_city || destination,
-          hotel_description:
-            item.hotel_description || hotel.description || match.description || "",
+          hotel_description: item.hotel_description || hotel.description || match.description || "",
           customer_facing_info:
             item.customer_facing_info || hotel.description || match.description || "",
           metadata: {
@@ -6445,8 +6450,7 @@ function ItineraryBuilderPage() {
       const query = (item.title || "").trim();
       if (
         query.length < 3 ||
-        (typeof item.metadata?.["google_place_id"] === "string" &&
-          item.metadata["google_place_id"])
+        (typeof item.metadata?.["google_place_id"] === "string" && item.metadata["google_place_id"])
       ) {
         return null;
       }
@@ -6489,20 +6493,21 @@ function ItineraryBuilderPage() {
     [],
   );
 
-  async function extractSupplierDraft(input: {
+  async function extractSupplierDraft(
+    input: {
       sourceText?: string;
       destinationText?: string;
       fileName?: string;
       mimeType?: string;
       fileBase64?: string;
-  }, options?: { quickPreview?: boolean }) {
+    },
+    options?: { quickPreview?: boolean },
+  ) {
     const extractedText = await extractSupplierTextFromFile(input);
     if (extractedText)
       await extractSupplierDraftFromText(extractedText, {
         ...(input.destinationText ? { destinationText: input.destinationText } : {}),
-        ...(options?.quickPreview !== undefined
-          ? { quickPreview: options.quickPreview }
-          : {}),
+        ...(options?.quickPreview !== undefined ? { quickPreview: options.quickPreview } : {}),
       });
   }
 
@@ -7200,9 +7205,7 @@ function ItineraryBuilderPage() {
           }
           const importedActivities = generatedDaysWithHotelPrices.flatMap((day) =>
             day.items
-              .filter(
-                (item) => item.item_type === "ACTIVITY" || item.item_type === "SIGHTSEEING",
-              )
+              .filter((item) => item.item_type === "ACTIVITY" || item.item_type === "SIGHTSEEING")
               .map((item) => ({ dayId: day.id, item })),
           );
           void Promise.all(
@@ -7344,9 +7347,7 @@ function ItineraryBuilderPage() {
     void enrichImages().then(() => {
       setActiveSection("day");
       setPreviewOpen(true);
-      setMessage(
-        "Quick itinerary is ready. Review the preview and any image-enrichment alerts.",
-      );
+      setMessage("Quick itinerary is ready. Review the preview and any image-enrichment alerts.");
     });
   }, [addingImages, days, form, quickPreviewDraftReady]);
 
@@ -7437,36 +7438,39 @@ function ItineraryBuilderPage() {
                   const city = entry["city"];
                   const nights = entry["nights"];
                   if (typeof city !== "string" || !city.trim()) return [];
-                  return [`${city.trim()}${typeof nights === "number" ? ` (${nights} nights)` : ""}`];
+                  return [
+                    `${city.trim()}${typeof nights === "number" ? ` (${nights} nights)` : ""}`,
+                  ];
                 })
                 .join(", ")
             : "";
-          setQuickPrompt((current) =>
-            current ||
-            [
-              `Customer: ${lead.customer_name}`,
-              `Trip: ${lead.destination_text ?? "Destination not specified"}`,
-              `Travel scope: ${lead.scope}`,
-              `Travel dates: ${lead.travel_start ?? "Not set"} to ${lead.travel_end ?? "Not set"}`,
-              `Travellers: ${lead.adults ?? 1} adults, ${lead.children ?? 0} children, ${lead.infants ?? 0} infants`,
-              cityNights ? `City-wise nights: ${cityNights}` : "",
-              lead.flexible_dates ? "Travel dates are flexible" : "",
-              lead.budget == null
-                ? "Budget: Not provided"
-                : `Budget: ${lead.currency ?? "INR"} ${Number(lead.budget).toLocaleString("en-IN")}`,
-              `Trip type: ${lead.trip_type ?? "Not specified"}`,
-              `Hotel category: ${lead.hotel_category ?? "Not specified"}`,
-              lead.meal_preference ? `Meal preference: ${lead.meal_preference}` : "",
-              lead.transport_preference
-                ? `Transport preference: ${lead.transport_preference}`
-                : "",
-              lead.special_requirements
-                ? `Special requirements: ${lead.special_requirements}`
-                : "",
-              lead.notes ? `Lead notes: ${lead.notes}` : "",
-            ]
-              .filter(Boolean)
-              .join("\n"),
+          setQuickPrompt(
+            (current) =>
+              current ||
+              [
+                `Customer: ${lead.customer_name}`,
+                `Trip: ${lead.destination_text ?? "Destination not specified"}`,
+                `Travel scope: ${lead.scope}`,
+                `Travel dates: ${lead.travel_start ?? "Not set"} to ${lead.travel_end ?? "Not set"}`,
+                `Travellers: ${lead.adults ?? 1} adults, ${lead.children ?? 0} children, ${lead.infants ?? 0} infants`,
+                cityNights ? `City-wise nights: ${cityNights}` : "",
+                lead.flexible_dates ? "Travel dates are flexible" : "",
+                lead.budget == null
+                  ? "Budget: Not provided"
+                  : `Budget: ${lead.currency ?? "INR"} ${Number(lead.budget).toLocaleString("en-IN")}`,
+                `Trip type: ${lead.trip_type ?? "Not specified"}`,
+                `Hotel category: ${lead.hotel_category ?? "Not specified"}`,
+                lead.meal_preference ? `Meal preference: ${lead.meal_preference}` : "",
+                lead.transport_preference
+                  ? `Transport preference: ${lead.transport_preference}`
+                  : "",
+                lead.special_requirements
+                  ? `Special requirements: ${lead.special_requirements}`
+                  : "",
+                lead.notes ? `Lead notes: ${lead.notes}` : "",
+              ]
+                .filter(Boolean)
+                .join("\n"),
           );
         }
       } else if (!generatedDraftMode && customerIdFromQuery) {
@@ -7503,12 +7507,16 @@ function ItineraryBuilderPage() {
       });
       const storageBaseKey = `savr-itinerary-draft:${userId}:${scope}`;
       const latestDraftKey = itineraryDraftLatestKey(userId);
+      const isFreshNewItinerary =
+        params.get("newItinerary") === "1" && Boolean(params.get("draftId"));
       draftStorageKeyRef.current = storageBaseKey;
       let savedDraftId = copyDraftId ?? linkedItineraryDraftId ?? params.get("draftId");
       if (!copySourceId) {
         try {
-          savedDraftId ||= window.localStorage.getItem(`${storageBaseKey}:id`);
-          if (!itineraryIdFromQuery) savedDraftId ||= window.localStorage.getItem(latestDraftKey);
+          if (!isFreshNewItinerary) {
+            savedDraftId ||= window.localStorage.getItem(`${storageBaseKey}:id`);
+            if (!itineraryIdFromQuery) savedDraftId ||= window.localStorage.getItem(latestDraftKey);
+          }
         } catch {
           // Continue with the server-backed draft when browser storage is unavailable.
         }
@@ -7517,7 +7525,9 @@ function ItineraryBuilderPage() {
       setCurrentDraftId(savedDraftId);
       try {
         window.localStorage.setItem(`${storageBaseKey}:id`, savedDraftId);
-        if (!itineraryIdFromQuery) window.localStorage.setItem(latestDraftKey, savedDraftId);
+        if (!itineraryIdFromQuery && !isFreshNewItinerary) {
+          window.localStorage.setItem(latestDraftKey, savedDraftId);
+        }
       } catch {
         // Private browsing or storage restrictions do not prevent database autosave.
       }
@@ -7529,7 +7539,7 @@ function ItineraryBuilderPage() {
         window.history.replaceState(null, "", nextUrl);
       }
 
-      if (!generatedDraftMode && !copySourceId) {
+      if (!generatedDraftMode && !copySourceId && !isFreshNewItinerary) {
         let snapshot: ItineraryDraftSnapshot | null = null;
         let localSavedAt = 0;
         try {
@@ -7957,7 +7967,8 @@ function ItineraryBuilderPage() {
               metadata: {
                 ...(overallHotel.metadata ?? {}),
                 overall_hotel_booking: true,
-                room_details: [{
+                room_details: [
+                  {
                     id: crypto.randomUUID(),
                     room_type: "Standard",
                     adults: Number(form.adults) || 2,
@@ -7968,7 +7979,8 @@ function ItineraryBuilderPage() {
                     room_rate_per_night: 0,
                     currency: "INR",
                     free_cancellation_date: "",
-                }],
+                  },
+                ],
               },
             },
           ],
@@ -9595,9 +9607,11 @@ function ItineraryBuilderPage() {
         flight_price: null,
         flight_currency: offer.currency,
         flight_option: selectedFlightOption,
-        notes: `Return leg · ${offer.return_stop_details ?? (offer.return_stops === undefined ? "stops not identified" : offer.return_stops === 0 ? "non-stop" : `${offer.return_stops} stop(s)`)}. ${offer.price > 0
-          ? `Round-trip fare ${offer.currency} ${offer.price.toLocaleString("en-IN")} is recorded on the outbound leg.`
-          : "Fare was not identified in the source; confirm it before booking."}`,
+        notes: `Return leg · ${offer.return_stop_details ?? (offer.return_stops === undefined ? "stops not identified" : offer.return_stops === 0 ? "non-stop" : `${offer.return_stops} stop(s)`)}. ${
+          offer.price > 0
+            ? `Round-trip fare ${offer.currency} ${offer.price.toLocaleString("en-IN")} is recorded on the outbound leg.`
+            : "Fare was not identified in the source; confirm it before booking."
+        }`,
       });
     }
   }
@@ -12936,8 +12950,7 @@ function ItineraryBuilderPage() {
           </div>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-6 py-5">
             {(() => {
-              const overallHotels = days
-                .flatMap((day, dayIndex) =>
+              const overallHotels = days.flatMap((day, dayIndex) =>
                 day.items
                   .map((item, itemIndex) => ({ day, dayIndex, item, itemIndex }))
                   .filter(({ item }) => {
@@ -12953,25 +12966,20 @@ function ItineraryBuilderPage() {
                 <section className="space-y-3 border-b border-slate-200 pb-5">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <h2 className="font-semibold text-slate-900">
-                        Overall hotel booking
-                      </h2>
+                      <h2 className="font-semibold text-slate-900">Overall hotel booking</h2>
                       <p className="text-xs text-slate-500">
-                        Add hotel names and guest-facing details without assigning them to trip days.
+                        Add hotel names and guest-facing details without assigning them to trip
+                        days.
                       </p>
                     </div>
-                    <Button
-                      type="button"
-                      variant="default"
-                      size="sm"
-                      onClick={addOverallHotel}
-                    >
+                    <Button type="button" variant="default" size="sm" onClick={addOverallHotel}>
                       <Plus className="mr-1.5 size-4" /> Add Overall Hotel
                     </Button>
                   </div>
                   {overallHotels.length === 0 && (
                     <p className="rounded-md border border-dashed border-slate-200 p-4 text-sm text-slate-500">
-                      No overall hotels added yet. Add a hotel to include its summary card in the itinerary.
+                      No overall hotels added yet. Add a hotel to include its summary card in the
+                      itinerary.
                     </p>
                   )}
                   <div className="space-y-3">
@@ -13187,10 +13195,14 @@ function ItineraryBuilderPage() {
                                       updateItem(dayIndex, itemIndex, { star_category: value })
                                     }
                                   >
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
                                     <SelectContent>
                                       {HOTEL_STAR_CATEGORIES.map((category) => (
-                                        <SelectItem key={category} value={category}>{category}</SelectItem>
+                                        <SelectItem key={category} value={category}>
+                                          {category}
+                                        </SelectItem>
                                       ))}
                                     </SelectContent>
                                   </Select>
@@ -13203,10 +13215,14 @@ function ItineraryBuilderPage() {
                                       updateItem(dayIndex, itemIndex, { room_type: value })
                                     }
                                   >
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
                                     <SelectContent>
                                       {ROOM_TYPES.map((roomType) => (
-                                        <SelectItem key={roomType} value={roomType}>{roomType}</SelectItem>
+                                        <SelectItem key={roomType} value={roomType}>
+                                          {roomType}
+                                        </SelectItem>
                                       ))}
                                     </SelectContent>
                                   </Select>
@@ -13219,10 +13235,14 @@ function ItineraryBuilderPage() {
                                       updateItem(dayIndex, itemIndex, { meal_plan: value })
                                     }
                                   >
-                                    <SelectTrigger><SelectValue /></SelectTrigger>
+                                    <SelectTrigger>
+                                      <SelectValue />
+                                    </SelectTrigger>
                                     <SelectContent>
                                       {HOTEL_MEAL_PLANS.map((mealPlan) => (
-                                        <SelectItem key={mealPlan} value={mealPlan}>{mealPlan}</SelectItem>
+                                        <SelectItem key={mealPlan} value={mealPlan}>
+                                          {mealPlan}
+                                        </SelectItem>
                                       ))}
                                     </SelectContent>
                                   </Select>
@@ -13230,7 +13250,9 @@ function ItineraryBuilderPage() {
                                 <div className="space-y-1.5 md:col-span-2">
                                   <Label>Guest-facing hotel summary</Label>
                                   <Textarea
-                                    value={item.customer_facing_info ?? item.hotel_description ?? ""}
+                                    value={
+                                      item.customer_facing_info ?? item.hotel_description ?? ""
+                                    }
                                     onChange={(event) =>
                                       updateItem(dayIndex, itemIndex, {
                                         customer_facing_info: event.target.value,
@@ -13301,7 +13323,8 @@ function ItineraryBuilderPage() {
                                                 room_details:
                                                   rooms.length > 0
                                                     ? rooms
-                                                    : [{
+                                                    : [
+                                                        {
                                                           id: crypto.randomUUID(),
                                                           room_type: "Standard",
                                                           adults: 2,
@@ -13312,7 +13335,8 @@ function ItineraryBuilderPage() {
                                                           room_rate_per_night: 0,
                                                           currency: "INR",
                                                           free_cancellation_date: "",
-                                                      }],
+                                                        },
+                                                      ],
                                               },
                                             });
                                           }}
@@ -13325,9 +13349,15 @@ function ItineraryBuilderPage() {
                                         <Input
                                           value={room.room_type}
                                           onChange={(event) =>
-                                            updateAccommodationRoom(dayIndex, itemIndex, item, roomIndex, {
+                                            updateAccommodationRoom(
+                                              dayIndex,
+                                              itemIndex,
+                                              item,
+                                              roomIndex,
+                                              {
                                                 room_type: event.target.value,
-                                            })
+                                              },
+                                            )
                                           }
                                           placeholder="Room Type"
                                         />
@@ -13340,9 +13370,15 @@ function ItineraryBuilderPage() {
                                             min={0}
                                             value={room.adults}
                                             onChange={(event) =>
-                                              updateAccommodationRoom(dayIndex, itemIndex, item, roomIndex, {
+                                              updateAccommodationRoom(
+                                                dayIndex,
+                                                itemIndex,
+                                                item,
+                                                roomIndex,
+                                                {
                                                   adults: Number(event.target.value) || 0,
-                                              })
+                                                },
+                                              )
                                             }
                                           />
                                         </div>
@@ -13367,11 +13403,13 @@ function ItineraryBuilderPage() {
                                         </div>
                                       </div>
                                       <div className="flex flex-wrap gap-4">
-                                        {([
+                                        {(
+                                          [
                                             { key: "breakfast", label: "Breakfast" },
                                             { key: "lunch", label: "Lunch" },
                                             { key: "dinner", label: "Dinner" },
-                                        ] as const).map((meal) => (
+                                          ] as const
+                                        ).map((meal) => (
                                           <label
                                             key={meal.key}
                                             className="flex items-center gap-2 text-sm text-slate-700"
@@ -13380,9 +13418,15 @@ function ItineraryBuilderPage() {
                                               type="checkbox"
                                               checked={room[meal.key]}
                                               onChange={(event) =>
-                                                updateAccommodationRoom(dayIndex, itemIndex, item, roomIndex, {
+                                                updateAccommodationRoom(
+                                                  dayIndex,
+                                                  itemIndex,
+                                                  item,
+                                                  roomIndex,
+                                                  {
                                                     [meal.key]: event.target.checked,
-                                                })
+                                                  },
+                                                )
                                               }
                                             />
                                             {meal.label}
@@ -13390,20 +13434,34 @@ function ItineraryBuilderPage() {
                                         ))}
                                       </div>
                                       <div className="space-y-1.5">
-                                        <Label>Room Rate Per Night ({room.currency || "INR"})</Label>
+                                        <Label>
+                                          Room Rate Per Night ({room.currency || "INR"})
+                                        </Label>
                                         <Input
                                           type="number"
                                           min={0}
                                           step="0.01"
                                           value={room.room_rate_per_night}
                                           onChange={(event) =>
-                                            updateRoomRate(dayIndex, itemIndex, item, roomIndex, event.target.value)
+                                            updateRoomRate(
+                                              dayIndex,
+                                              itemIndex,
+                                              item,
+                                              roomIndex,
+                                              event.target.value,
+                                            )
                                           }
                                         />
                                         <Select
                                           value={room.currency || "INR"}
                                           onValueChange={(currency) =>
-                                            updateRoomCurrency(dayIndex, itemIndex, item, roomIndex, currency)
+                                            updateRoomCurrency(
+                                              dayIndex,
+                                              itemIndex,
+                                              item,
+                                              roomIndex,
+                                              currency,
+                                            )
                                           }
                                         >
                                           <SelectTrigger className="mt-2">
@@ -13429,9 +13487,15 @@ function ItineraryBuilderPage() {
                                           type="date"
                                           value={room.free_cancellation_date}
                                           onChange={(event) =>
-                                            updateAccommodationRoom(dayIndex, itemIndex, item, roomIndex, {
+                                            updateAccommodationRoom(
+                                              dayIndex,
+                                              itemIndex,
+                                              item,
+                                              roomIndex,
+                                              {
                                                 free_cancellation_date: event.target.value,
-                                            })
+                                              },
+                                            )
                                           }
                                         />
                                       </div>
@@ -13510,8 +13574,9 @@ function ItineraryBuilderPage() {
                           role="alert"
                           className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
                         >
-                      The final trip day is checkout-only. Remove these entries and add the hotel to
-                      an earlier overnight day if needed; no hotel can check in on this date.
+                          The final trip day is checkout-only. Remove these entries and add the
+                          hotel to an earlier overnight day if needed; no hotel can check in on this
+                          date.
                         </p>
                       )}
                       {hotels.length === 0 && (
@@ -13681,11 +13746,15 @@ function ItineraryBuilderPage() {
                                     size="sm"
                                     className="h-9 border-slate-300 bg-white text-sm font-medium text-slate-700"
                                     onClick={() =>
-                                  document.getElementById(`custom-hotel-image-${hotelKey}`)?.click()
+                                      document
+                                        .getElementById(`custom-hotel-image-${hotelKey}`)
+                                        ?.click()
                                     }
                                   >
                                     <Upload className="mr-2 size-4" />
-                                {customHotelImage ? "Replace Custom Image" : "Upload Custom Image"}
+                                    {customHotelImage
+                                      ? "Replace Custom Image"
+                                      : "Upload Custom Image"}
                                   </Button>
                                   <input
                                     id={`custom-hotel-image-${hotelKey}`}
@@ -13781,7 +13850,10 @@ function ItineraryBuilderPage() {
                                         },
                                       ];
                                       updateItem(dayIndex, itemIndex, {
-                                    metadata: { ...(item.metadata ?? {}), room_details: nextRooms },
+                                        metadata: {
+                                          ...(item.metadata ?? {}),
+                                          room_details: nextRooms,
+                                        },
                                       });
                                     }}
                                   >
@@ -13922,10 +13994,14 @@ function ItineraryBuilderPage() {
                                                 type="checkbox"
                                                 checked={room[meal.key]}
                                                 onChange={(event) => {
-                                              const rooms = getAccommodationRoomDetails(item).map(
-                                                (entry, index) =>
+                                                  const rooms = getAccommodationRoomDetails(
+                                                    item,
+                                                  ).map((entry, index) =>
                                                     index === roomIndex
-                                                    ? { ...entry, [meal.key]: event.target.checked }
+                                                      ? {
+                                                          ...entry,
+                                                          [meal.key]: event.target.checked,
+                                                        }
                                                       : entry,
                                                   );
                                                   updateItem(dayIndex, itemIndex, {
@@ -13941,7 +14017,9 @@ function ItineraryBuilderPage() {
                                           ))}
                                         </div>
                                         <div>
-                                      <Label>Room Rate Per Night ({room.currency || "INR"})</Label>
+                                          <Label>
+                                            Room Rate Per Night ({room.currency || "INR"})
+                                          </Label>
                                           <Input
                                             type="number"
                                             min={0}
@@ -14020,7 +14098,9 @@ function ItineraryBuilderPage() {
                                   type="button"
                                   disabled={saving || checkoutOnlyDay}
                                   title={
-                                checkoutOnlyDay ? "The final trip day is checkout-only." : undefined
+                                    checkoutOnlyDay
+                                      ? "The final trip day is checkout-only."
+                                      : undefined
                                   }
                                   onClick={async () => {
                                     const saved = await saveItinerary(

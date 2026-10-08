@@ -12,6 +12,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { searchAirports, type Airport } from "@/lib/airports";
 import {
   Select,
   SelectContent,
@@ -31,6 +32,87 @@ import type { LiveFlightOffer } from "@/lib/travel-search-types";
 
 const CABINS = ["Economy", "Premium Economy", "Business", "First"] as const;
 const CURRENCIES = ["INR", "USD", "AED"] as const;
+
+function AirportPicker({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: string;
+  onChange: (airport: Airport) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selectedAirport = useMemo(
+    () => searchAirports(value, 1).find((airport) => airport.code === value) ?? null,
+    [value],
+  );
+  const matches = useMemo(() => searchAirports(query), [query]);
+
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(nextOpen) => {
+        setOpen(nextOpen);
+        if (!nextOpen) setQuery("");
+      }}
+    >
+      <PopoverTrigger asChild>
+        <Button
+          id={id}
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal"
+        >
+          <span className="truncate">
+            {selectedAirport
+              ? `${selectedAirport.city} · ${selectedAirport.name} (${selectedAirport.code})`
+              : "Search city, airport or code"}
+          </span>
+          <span className="ml-2 text-muted-foreground">⌄</span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[var(--radix-popover-trigger-width)] p-0">
+        <Command shouldFilter={false}>
+          <CommandInput
+            value={query}
+            onValueChange={setQuery}
+            placeholder="Type a city, airport or 3-letter code…"
+          />
+          <CommandList>
+            {matches.length === 0 ? (
+              <CommandEmpty>No matching airport. Try another city or airport code.</CommandEmpty>
+            ) : (
+              matches.map((airport) => (
+                <CommandItem
+                  key={airport.code}
+                  value={`${airport.city} ${airport.name} ${airport.code} ${airport.country}`}
+                  onSelect={() => {
+                    onChange(airport);
+                    setOpen(false);
+                    setQuery("");
+                  }}
+                >
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate font-medium">
+                      {airport.city} · {airport.name}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {airport.code} · {airport.country}
+                    </span>
+                  </span>
+                </CommandItem>
+              ))
+            )}
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 function TrainStationPicker({
   id,
@@ -209,8 +291,9 @@ export function LiveTravelSearch({
   );
 
   const trainValidationError = getTrainSearchValidationError(trainFrom, trainTo, departure);
-  const hasValidFlightRoute =
+  const hasAirportCodeRoute =
     /^[A-Z]{3}$/.test(from.trim()) && /^[A-Z]{3}$/.test(to.trim()) && from.trim() !== to.trim();
+  const hasValidFlightRoute = hasAirportCodeRoute;
   const flightDateError =
     tripType === "round-trip" && departure && returnDate && returnDate < departure;
 
@@ -218,7 +301,7 @@ export function LiveTravelSearch({
     mode === "flight"
       ? flightSearchProviders.map((provider) => ({
           name: provider.name,
-          url: buildFlightSearchLink(provider, flightLinkParams),
+          url: hasAirportCodeRoute ? buildFlightSearchLink(provider, flightLinkParams) : "",
         }))
       : trainSearchProviders.map((provider) => ({
           name: provider.name,
@@ -278,15 +361,11 @@ export function LiveTravelSearch({
         <div className="space-y-1">
           {mode === "flight" ? (
             <>
-              <Label htmlFor="travel-search-from">Origin airport (IATA)</Label>
-              <Input
+              <Label htmlFor="travel-search-from">From city or airport</Label>
+              <AirportPicker
                 id="travel-search-from"
-                maxLength={3}
                 value={from}
-                onChange={(event) =>
-                  setFrom(event.target.value.replace(/[^a-z]/gi, "").toUpperCase())
-                }
-                placeholder="HYD"
+                onChange={(airport) => setFrom(airport.code)}
               />
             </>
           ) : (
@@ -303,15 +382,11 @@ export function LiveTravelSearch({
         <div className="space-y-1">
           {mode === "flight" ? (
             <>
-              <Label htmlFor="travel-search-to">Destination airport (IATA)</Label>
-              <Input
+              <Label htmlFor="travel-search-to">To city or airport</Label>
+              <AirportPicker
                 id="travel-search-to"
-                maxLength={3}
                 value={to}
-                onChange={(event) =>
-                  setTo(event.target.value.replace(/[^a-z]/gi, "").toUpperCase())
-                }
-                placeholder="AMD"
+                onChange={(airport) => setTo(airport.code)}
               />
             </>
           ) : (
@@ -470,6 +545,13 @@ export function LiveTravelSearch({
         )}
       </div>
 
+      {mode === "flight" && (
+        <p className="text-xs text-muted-foreground">
+          Search by city, airport name, or code, then choose an airport suggestion. Flight searches
+          use the selected airport codes.
+        </p>
+      )}
+
       {mode === "train" && trainValidationError && (
         <p className="text-xs text-rose-600" role="alert">
           {trainValidationError}
@@ -477,7 +559,7 @@ export function LiveTravelSearch({
       )}
       {mode === "flight" && (from || to) && !hasValidFlightRoute && (
         <p className="text-xs text-rose-600" role="alert">
-          Enter different three-letter airport codes, such as HYD and DEL.
+          Choose different airports from the suggestions.
         </p>
       )}
       {mode === "flight" && flightDateError && (

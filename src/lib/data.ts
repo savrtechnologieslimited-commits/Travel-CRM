@@ -381,6 +381,19 @@ export function useUpsert(table: "leads" | "customers" | "enquiries" | "tasks", 
       values: Record<string, unknown>;
     }) => {
       if (id) {
+        if (table === "leads") {
+          const { count, error } = await supabase
+            .from(table)
+            .update(values as never, { count: "exact" })
+            .eq("id", id);
+          if (error) throw error;
+          if (count === 0) {
+            throw new Error(
+              "Lead was not updated. It may have been deleted or you may not have permission to edit it.",
+            );
+          }
+          return id;
+        }
         const { error } = await supabase
           .from(table)
           .update(values as never)

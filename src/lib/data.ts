@@ -92,15 +92,19 @@ export function useLead(id: string) {
   });
 }
 
-export function useLeadItineraries(leadId: string) {
+export function useLeadItineraries(leadId: string, customerId?: string | null) {
   return useQuery({
-    queryKey: ["lead-itineraries", leadId],
+    queryKey: ["lead-itineraries", leadId, customerId],
     enabled: Boolean(leadId),
     queryFn: async () => {
       const { data, error } = await supabase
         .from("itineraries")
-        .select("id,title,name,status,travel_start_date,travel_end_date,created_at")
-        .eq("lead_id", leadId)
+        .select(
+          "id,title,name,status,travel_start_date,travel_end_date,created_at,lead_id,customer_id,destination_id,destinations(name)",
+        )
+        .or(
+          customerId ? `lead_id.eq.${leadId},customer_id.eq.${customerId}` : `lead_id.eq.${leadId}`,
+        )
         .order("created_at", { ascending: false });
       if (error) throw error;
       return data ?? [];

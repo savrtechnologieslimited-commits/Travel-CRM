@@ -5217,6 +5217,8 @@ function ItineraryBuilderPage() {
       ? { lead_id: selectedLead.id, customer_id: selectedLead.customer_id ?? "", enquiry_id: "" }
       : { lead_id: "", customer_id: selectedCustomer!.id, enquiry_id: "" };
     if (currentItineraryId && relationship.customer_id && selectedCustomer) {
+      const saved = await saveItinerary(false);
+      if (!saved) return;
       const params = new URLSearchParams({
         copyFrom: currentItineraryId,
         customerId: relationship.customer_id,

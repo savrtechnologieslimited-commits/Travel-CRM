@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ArrowLeft } from "lucide-react";
 import {
@@ -8,6 +9,7 @@ import {
   useLogCommunication,
   useUpsert,
 } from "@/lib/data";
+import { LeadItineraryCard } from "@/components/lead-itinerary-card";
 import {
   CHANNELS,
   LEAD_STATUSES,
@@ -57,13 +59,13 @@ export const Route = createFileRoute("/_authenticated/leads/$leadId")({
 function LeadDetailPage() {
   const { leadId } = Route.useParams();
   const { data: lead, isLoading } = useLead(leadId);
+  const queryClient = useQueryClient();
   const {
     data: itineraries = [],
     isLoading: itinerariesLoading,
-    isFetching: itinerariesFetching,
     isError: itinerariesError,
     error: itinerariesLoadError,
-  } = useLeadItineraries(leadId);
+  } = useLeadItineraries(leadId, lead?.customer_id);
   const { data: activity = [] } = useCommunications(leadId);
   const updateLead = useUpsert("leads", "Lead");
   const logComm = useLogCommunication();
@@ -151,7 +153,7 @@ function LeadDetailPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="whatsapp">WhatsApp</TabsTrigger>
           <TabsTrigger value="requirements">Requirements</TabsTrigger>
-          <TabsTrigger value="itinerary">Itinerary</TabsTrigger>
+          <TabsTrigger value="itinerary">Itineraries</TabsTrigger>
           <TabsTrigger value="quotation">Quotation</TabsTrigger>
           <TabsTrigger value="booking">Booking</TabsTrigger>
         </TabsList>
@@ -300,76 +302,48 @@ function LeadDetailPage() {
         )}
 
         {tab === "itinerary" && (
-          <Card className="lg:col-span-3">
-            <CardHeader>
-              <CardTitle className="font-display text-base">Itinerary</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              {itinerariesLoading && (
-                <p className="text-sm text-muted-foreground">Loading assigned itineraries…</p>
-              )}
-              {itinerariesError && (
-                <p role="alert" className="text-sm text-destructive">
-                  Could not load itineraries assigned to this lead
-                  {itinerariesLoadError instanceof Error
-                    ? `: ${itinerariesLoadError.message}`
-                    : "."}
+          <section className="lg:col-span-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900">Lead itineraries</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                  Itinerary copies assigned to {lead.customer_name}.
                 </p>
-              )}
-              {!itinerariesLoading && !itinerariesError && itineraries.length === 0 && (
-                <p className="text-sm text-muted-foreground">
-                  No itineraries assigned to this lead yet.
-                </p>
-              )}
-              {itineraries.length > 0 && (
-                <div className="space-y-2">
-                  {itineraries.map((itinerary) => (
-                    <Link
-                      key={itinerary.id}
-                      to="/itinerary-builder"
-                      search={{ itineraryId: itinerary.id }}
-                      className="block rounded-lg border p-3 transition-colors hover:bg-muted/40"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-medium">
-                            {itinerary.title ?? itinerary.name ?? "Untitled itinerary"}
-                          </p>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {lead.destination_text ?? "Destination pending"} ·{" "}
-                            {itinerary.travel_start_date || itinerary.travel_end_date
-                              ? `${itinerary.travel_start_date ? formatDate(itinerary.travel_start_date) : "Dates not set"}${itinerary.travel_end_date ? ` – ${formatDate(itinerary.travel_end_date)}` : ""}`
-                              : "Dates not set"}
-                          </p>
-                        </div>
-                        <StatusBadge status={itinerary.status} />
-                      </div>
-                    </Link>
-                  ))}
-                </div>
-              )}
-              <div className="flex flex-wrap gap-2">
-                {itinerariesLoading || itinerariesFetching ? (
-                  <span className="text-sm text-muted-foreground">Checking itineraries…</span>
-                ) : (
-                  !itinerariesError && (
-                    <Link
-                      to="/itinerary-builder"
-                      search={
-                        itineraries[0] ? { itineraryId: itineraries[0].id } : { leadId: lead.id }
-                      }
-                      className="text-sm text-primary hover:underline"
-                    >
-                      {itineraries[0] ? "Open latest itinerary" : "Create itinerary"}
-                    </Link>
-                  )
-                )}
-                <Link to="/itinerary-library" className="text-sm text-primary hover:underline">
-                  Open library
-                </Link>
               </div>
-            </CardContent>
-          </Card>
+              <Button size="sm" variant="outline" asChild>
+                <Link to="/itinerary-builder" search={{ leadId: lead.id }}>
+                  Create itinerary
+                </Link>
+              </Button>
+            </div>
+            {itinerariesLoading ? (
+              <p className="text-sm text-slate-500">Loading assigned itineraries…</p>
+            ) : itinerariesError ? (
+              <p role="alert" className="text-sm text-rose-700">
+                Could not load itineraries assigned to this lead
+                {itinerariesLoadError instanceof Error ? `: ${itinerariesLoadError.message}` : "."}
+              </p>
+            ) : itineraries.length === 0 ? (
+              <p className="text-sm text-slate-500">No itineraries assigned to this lead yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {itineraries.map((itinerary, index) => (
+                  <LeadItineraryCard
+                    key={itinerary.id}
+                    itinerary={itinerary}
+                    index={index}
+                    leadId={lead.id}
+                    customerId={lead.customer_id}
+                    customerName={lead.customer_name}
+                    phoneNumber={lead.mobile}
+                    onDeleted={() =>
+                      queryClient.invalidateQueries({ queryKey: ["lead-itineraries", leadId] })
+                    }
+                  />
+                ))}
+              </div>
+            )}
+          </section>
         )}
 
         {tab === "quotation" && (

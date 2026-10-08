@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { ExternalLink, LoaderCircle, Plane, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Input } from "@/components/ui/input";
@@ -7,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { buildFlightSearchLink, buildTrainSearchLink, flightSearchProviders, getTrainSearchValidationError, trainSearchProviders } from "@/lib/travel-search-providers";
+import { searchLiveFlightOffersFn } from "@/lib/travel-search";
 import type { TrainStation } from "@/lib/travel-search-providers";
 import type { LiveFlightOffer } from "@/lib/travel-search-types";
 
@@ -91,6 +93,7 @@ export function LiveTravelSearch({
   travelEnd,
   adults,
   children,
+  onAddFlight,
 }: {
   travelStart: string;
   travelEnd: string;
@@ -113,6 +116,12 @@ export function LiveTravelSearch({
   const [cabin, setCabin] = useState<(typeof CABINS)[number]>("Economy");
   const [trainClass, setTrainClass] = useState("Sleeper Class");
   const [directFlightOnly, setDirectFlightOnly] = useState(false);
+  const [liveOffers, setLiveOffers] = useState<LiveFlightOffer[]>([]);
+  const [searchingLiveOffers, setSearchingLiveOffers] = useState(false);
+  const [searchedLiveOffers, setSearchedLiveOffers] = useState(false);
+  const [liveSearchError, setLiveSearchError] = useState("");
+  const liveSearchSequence = useRef(0);
+  const searchLiveOffers = useServerFn(searchLiveFlightOffersFn);
 
   const flightLinkParams = useMemo(() => ({
     from: from.trim(),
@@ -138,6 +147,46 @@ export function LiveTravelSearch({
   }), [trainFrom, trainTo, departure, trainClass, adultsValue, currency]);
 
   const trainValidationError = getTrainSearchValidationError(trainFrom, trainTo, departure);
+
+  useEffect(() => {
+    liveSearchSequence.current += 1;
+    setLiveOffers([]);
+    setSearchedLiveOffers(false);
+    setLiveSearchError("");
+    setSearchingLiveOffers(false);
+    return () => { liveSearchSequence.current += 1; };
+  }, [from, to, departure, returnDate, tripType, currency, adultsValue, childrenValue, infants, cabin, directFlightOnly]);
+
+  async function searchLiveFlights() {
+    const sequence = ++liveSearchSequence.current;
+    setLiveSearchError("");
+    setLiveOffers([]);
+    setSearchedLiveOffers(false);
+    setSearchingLiveOffers(true);
+    try {
+      const offers = await searchLiveOffers({ data: {
+        from: from.trim().toUpperCase(),
+        to: to.trim().toUpperCase(),
+        departure,
+        adults: Number(adultsValue || 1),
+        children: Number(childrenValue || 0),
+        infants: Number(infants || 0),
+        cabin,
+        currency,
+        directFlight: directFlightOnly,
+      } });
+      if (sequence === liveSearchSequence.current) {
+        setLiveOffers(offers);
+        setSearchedLiveOffers(true);
+      }
+    } catch (error) {
+      if (sequence === liveSearchSequence.current) {
+        setLiveSearchError(error instanceof Error ? error.message : "Unable to search live flight fares.");
+      }
+    } finally {
+      if (sequence === liveSearchSequence.current) setSearchingLiveOffers(false);
+    }
+  }
 
   const providerButtons = mode === "flight"
     ? flightSearchProviders.map((provider) => ({
@@ -180,7 +229,7 @@ export function LiveTravelSearch({
         <div className="space-y-1">
           {mode === "flight" ? (
             <>
-              <Label htmlFor="travel-search-from">Origin</Label>
+              <Label htmlFor="travel-search-from">Origin airport (IATA)</Label>
               <Input id="travel-search-from" value={from} onChange={(event) => setFrom(event.target.value.toUpperCase())} placeholder="HYD" />
             </>
           ) : (
@@ -193,7 +242,7 @@ export function LiveTravelSearch({
         <div className="space-y-1">
           {mode === "flight" ? (
             <>
-              <Label htmlFor="travel-search-to">Destination</Label>
+              <Label htmlFor="travel-search-to">Destination airport (IATA)</Label>
               <Input id="travel-search-to" value={to} onChange={(event) => setTo(event.target.value.toUpperCase())} placeholder="AMD" />
             </>
           ) : (
@@ -292,18 +341,24 @@ export function LiveTravelSearch({
         <p className="text-xs text-rose-600" role="alert">{trainValidationError}</p>
       )}
 
+      {mode === "flight" && tripType === "round-trip" && (
+        <p className="text-xs text-slate-600" role="status">
+          In-CRM live fares currently support one-way trips only. Use an external provider below for complete round-trip options.
+        </p>
+      )}
+
       <div className="flex flex-wrap gap-2 pt-1">
         {mode === "flight" && (
-          <Button
-            type="button"
-            variant="default"
-            size="sm"
-            disabled={isDisabled || providerButtons.every((provider) => !provider.url)}
-            onClick={openAllProviders}
-          >
-            <ExternalLink className="mr-2 size-4" />
-            Open all {providerButtons.length} providers
-          </Button>
+          <>
+            <Button type="button" variant="default" size="sm" disabled={isDisabled || tripType !== "one-way" || searchingLiveOffers} onClick={() => void searchLiveFlights()}>
+              {searchingLiveOffers ? <LoaderCircle className="mr-2 size-4 animate-spin" /> : <Search className="mr-2 size-4" />}
+              {searchingLiveOffers ? "Searching live fares…" : "Search live fares in CRM"}
+            </Button>
+            <Button type="button" variant="outline" size="sm" disabled={isDisabled || providerButtons.every((provider) => !provider.url)} onClick={openAllProviders}>
+              <ExternalLink className="mr-2 size-4" />
+              Open all {providerButtons.length} providers
+            </Button>
+          </>
         )}
         {providerButtons.map((provider) => (
           <Button
@@ -323,7 +378,46 @@ export function LiveTravelSearch({
         ))}
       </div>
 
-      <p className="text-[11px] text-slate-500">{mode === "train" ? "Opens the selected provider with your search details pre-filled." : "The CRM generates search links only. It does not scrape fares, automate booking, or access provider accounts."}</p>
+      {liveSearchError && <p className="text-sm text-destructive" role="alert">{liveSearchError}</p>}
+      {mode === "flight" && liveOffers.length > 0 && (
+        <div className="space-y-2" aria-live="polite">
+          <h3 className="text-sm font-semibold text-slate-900">Live Google Flights results</h3>
+          <p className="text-xs text-slate-600">Indicative fares from SearchApi. Prices and availability can change; the CRM does not book or issue tickets.</p>
+          {liveOffers.map((offer) => (
+            <article key={offer.id} className="flex flex-col gap-3 rounded-md border bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex min-w-0 items-start gap-3">
+                <Plane className="mt-0.5 size-4 shrink-0 text-sky-700" />
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-900">{offer.from} → {offer.to} · {offer.airline}</p>
+                  <p className="text-xs text-slate-600">
+                    {offer.flight_number && `${offer.flight_number} · `}
+                    {offer.departure_at.replace("T", " ")} – {offer.arrival_at.replace("T", " ")}
+                  </p>
+                  <p className="text-xs text-slate-600">
+                    {offer.duration && `${offer.duration} · `}
+                    {offer.stops === 0 ? "Non-stop" : `${offer.stops} stop(s)`}
+                    {offer.cabin && ` · ${offer.cabin}`}
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
+                <p className="text-sm font-semibold text-slate-900">
+                  {new Intl.NumberFormat("en-IN", { style: "currency", currency: offer.currency || currency, maximumFractionDigits: 0 }).format(offer.price)}
+                </p>
+                {onAddFlight && <Button type="button" size="sm" variant="outline" onClick={() => onAddFlight(offer)}>
+                  <Plus className="mr-1 size-4" />
+                  Add to itinerary
+                </Button>}
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+      {mode === "flight" && searchedLiveOffers && liveOffers.length === 0 && (
+        <p className="text-sm text-slate-600">No live flight offers found. Try another search or use an external provider.</p>
+      )}
+
+      <p className="text-[11px] text-slate-500">{mode === "train" ? "Opens the selected provider with your search details pre-filled." : "SearchApi provides live search results through its Google Flights integration. External providers remain available as a fallback; this CRM does not complete bookings."}</p>
     </section>
   );
 }

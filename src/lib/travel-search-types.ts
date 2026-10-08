@@ -18,3 +18,14 @@ export type LiveFlightOffer = {
   cabin?: string;
 };
 
+export type LiveFlightSearchInput = {
+  from: string;
+  to: string;
+  departure: string;
+  adults: number;
+  children: number;
+  infants: number;
+  cabin: string;
+  currency: string;
+  directFlight: boolean;
+};

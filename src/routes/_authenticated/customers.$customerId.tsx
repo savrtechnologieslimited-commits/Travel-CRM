@@ -81,30 +81,8 @@ function AssignedItineraryCard({
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [sharing, setSharing] = useState(false);
-  const [previewing, setPreviewing] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const title = itinerary.title ?? itinerary.name ?? "Untitled itinerary";
-
-  async function openPreview() {
-    const previewWindow = window.open("about:blank", "_blank");
-    if (!previewWindow) {
-      toast.error("Allow pop-ups to open the itinerary preview.");
-      return;
-    }
-    setPreviewing(true);
-    try {
-      const result = await createShare({ data: { itineraryId: itinerary.id, expiresInDays: 30 } });
-      previewWindow.location.href = buildPublicItineraryShareUrl(
-        window.location.origin,
-        result.token,
-      );
-    } catch (error) {
-      previewWindow.close();
-      toast.error(error instanceof Error ? error.message : "Unable to open itinerary preview.");
-    } finally {
-      setPreviewing(false);
-    }
-  }
 
   async function shareItinerary() {
     setSharing(true);
@@ -187,15 +165,11 @@ function AssignedItineraryCard({
           <StatusBadge status={itinerary.status} />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => void openPreview()}
-            disabled={previewing}
-          >
-            <Eye className="mr-1.5 size-4" />
-            {previewing ? "Opening…" : "Preview"}
+          <Button type="button" size="sm" variant="outline" asChild>
+            <Link to="/itinerary-builder" search={{ itineraryId: itinerary.id, preview: "1" }}>
+              <Eye className="mr-1.5 size-4" />
+              Review
+            </Link>
           </Button>
           <Button type="button" size="sm" variant="outline" asChild>
             <Link to="/itinerary-builder" search={{ itineraryId: itinerary.id }}>

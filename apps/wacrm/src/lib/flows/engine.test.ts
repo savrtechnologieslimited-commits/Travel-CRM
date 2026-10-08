@@ -21,14 +21,17 @@ const h = vi.hoisted(() => ({
     /** Every UPDATE, by table. */
     updates: [] as { table: string; row: Record<string, unknown> }[],
   },
-  crmDestinations: vi.fn(async () => [] as Array<{
-    id: string;
-    name: string;
-    scope: "domestic" | "international";
-    pdf: { name: string; url: string } | null;
-    assignment_status: "assigned" | "unassigned" | "ambiguous";
-    assigned_employee_id: string;
-  }>),
+  crmDestinations: vi.fn(
+    async () =>
+      [] as Array<{
+        id: string;
+        name: string;
+        scope: "domestic" | "international";
+        pdf: { name: string; url: string } | null;
+        assignment_status: "assigned" | "unassigned" | "ambiguous";
+        assigned_employee_id: string;
+      }>,
+  ),
   crmDestinationDetails: vi.fn(
     async (): Promise<{
       destination_id: string;
@@ -104,13 +107,8 @@ vi.mock("./admin-client", () => {
       },
       maybeSingle: async () => ({ data: rows(table)[0] ?? null, error: null }),
       single: async () => ({ data: rows(table)[0] ?? null, error: null }),
-      then: (
-        resolve: (r: {
-          data: unknown[];
-          error: null;
-          count: number;
-        }) => unknown,
-      ) => resolve({ data: rows(table), error: null, count: 0 }),
+      then: (resolve: (r: { data: unknown[]; error: null; count: number }) => unknown) =>
+        resolve({ data: rows(table), error: null, count: 0 }),
     };
     return b;
   }
@@ -139,20 +137,13 @@ import {
   isTerminal,
   evaluateConditionPredicate,
 } from "./engine";
-import type {
-  engineSendInteractiveButtons,
-  engineSendInteractiveList,
-} from "./meta-send";
+import type { engineSendInteractiveButtons, engineSendInteractiveList } from "./meta-send";
 import type { ParsedInbound } from "./types";
 
 describe("matchReplyId", () => {
   it("returns null for nodes without options", () => {
-    expect(
-      matchReplyId({ node_type: "start", config: { next_node_key: "x" } }, "y"),
-    ).toBeNull();
-    expect(
-      matchReplyId({ node_type: "send_message", config: {} }, "y"),
-    ).toBeNull();
+    expect(matchReplyId({ node_type: "start", config: { next_node_key: "x" } }, "y")).toBeNull();
+    expect(matchReplyId({ node_type: "send_message", config: {} }, "y")).toBeNull();
     expect(matchReplyId({ node_type: "end", config: {} }, "y")).toBeNull();
   });
 
@@ -195,9 +186,7 @@ describe("matchReplyId", () => {
         sections: [
           {
             title: "Recent",
-            rows: [
-              { reply_id: "o1", title: "Order 1", next_node_key: "ord_1" },
-            ],
+            rows: [{ reply_id: "o1", title: "Order 1", next_node_key: "ord_1" }],
           },
           {
             title: "Older",
@@ -217,10 +206,7 @@ describe("matchReplyId", () => {
 
   it("returns null when send_list has no sections / empty sections", () => {
     expect(
-      matchReplyId(
-        { node_type: "send_list", config: { text: "x", sections: [] } },
-        "x",
-      ),
+      matchReplyId({ node_type: "send_list", config: { text: "x", sections: [] } }, "x"),
     ).toBeNull();
     expect(
       matchReplyId(
@@ -501,7 +487,11 @@ const BUTTONS_NODE = {
       // A reply_id is a routing key, not customer-visible text; it must
       // reach Meta exactly as authored even if it happens to look like a
       // template.
-      { reply_id: "no_{{vars.name}}", title: "No thanks", next_node_key: "done" },
+      {
+        reply_id: "no_{{vars.name}}",
+        title: "No thanks",
+        next_node_key: "done",
+      },
     ],
   },
 };
@@ -550,7 +540,13 @@ function nodesEndingIn(next: "choose" | "pick") {
     },
     BUTTONS_NODE,
     LIST_NODE,
-    { id: "n9", flow_id: "flow-1", node_key: "done", node_type: "end", config: {} },
+    {
+      id: "n9",
+      flow_id: "flow-1",
+      node_key: "done",
+      node_type: "end",
+      config: {},
+    },
   ];
 }
 
@@ -579,9 +575,7 @@ describe("crm_destination runtime", () => {
           __crm_enquiry_enabled: true,
           __crm_destination_picker: {
             enabled: true,
-            options: [
-              { id: "destination-1", name: "Goa", scope: "domestic" },
-            ],
+            options: [{ id: "destination-1", name: "Goa", scope: "domestic" }],
             page: 0,
           },
         },
@@ -620,7 +614,13 @@ describe("crm_destination runtime", () => {
           next_node_key: "done",
         },
       },
-      { id: "end-node", flow_id: "flow-1", node_key: "done", node_type: "end", config: {} },
+      {
+        id: "end-node",
+        flow_id: "flow-1",
+        node_key: "done",
+        node_type: "end",
+        config: {},
+      },
     ];
     h.state.events = [];
     h.state.updates = [];
@@ -629,7 +629,10 @@ describe("crm_destination runtime", () => {
         id: "destination-1",
         name: "Goa",
         scope: "domestic",
-        pdf: { name: "goa-itinerary.pdf", url: "https://crm.example/signed.pdf" },
+        pdf: {
+          name: "goa-itinerary.pdf",
+          url: "https://crm.example/signed.pdf",
+        },
         assignment_status: "assigned",
         assigned_employee_id: "employee-1",
       },
@@ -758,7 +761,13 @@ describe("crm_destination runtime", () => {
           next_node_key: "done",
         },
       },
-      { id: "end-node", flow_id: "flow-1", node_key: "done", node_type: "end", config: {} },
+      {
+        id: "end-node",
+        flow_id: "flow-1",
+        node_key: "done",
+        node_type: "end",
+        config: {},
+      },
     ];
 
     const result = await dispatch(text("June 15"));
@@ -832,7 +841,11 @@ describe("crm_destination runtime", () => {
         config: {
           text: "Select travel type",
           buttons: [
-            { reply_id: "agent", title: "Speak to Agent", next_node_key: "handoff" },
+            {
+              reply_id: "agent",
+              title: "Speak to Agent",
+              next_node_key: "handoff",
+            },
           ],
         },
       },
@@ -930,7 +943,13 @@ describe("reusable Travel CRM nodes and dynamic lists", () => {
         node_type: "send_buttons",
         config: {
           text: "Choose",
-          buttons: [{ reply_id: "domestic", title: "Domestic", next_node_key: "lookup" }],
+          buttons: [
+            {
+              reply_id: "domestic",
+              title: "Domestic",
+              next_node_key: "lookup",
+            },
+          ],
         },
       },
       {
@@ -941,6 +960,7 @@ describe("reusable Travel CRM nodes and dynamic lists", () => {
         config: {
           travel_type: "domestic",
           result_var: "destinations",
+          include_none_option: true,
           next_node_key: "pick",
           error_next_node_key: "error",
         },
@@ -962,14 +982,29 @@ describe("reusable Travel CRM nodes and dynamic lists", () => {
             { var_key: "travel_type", field: "travel_type" },
             { var_key: "selected_destination_id", field: "destination_id" },
             { var_key: "selected_destination_name", field: "destination_name" },
-            { var_key: "selected_assigned_employee_id", field: "assigned_employee_id" },
+            {
+              var_key: "selected_assigned_employee_id",
+              field: "assigned_employee_id",
+            },
           ],
           dynamic_next_node_key: "details",
           dynamic_error_next_node_key: "error",
         },
       },
-      { id: "error", flow_id: "flow-1", node_key: "error", node_type: "end", config: {} },
-      { id: "done", flow_id: "flow-1", node_key: "details", node_type: "end", config: {} },
+      {
+        id: "error",
+        flow_id: "flow-1",
+        node_key: "error",
+        node_type: "end",
+        config: {},
+      },
+      {
+        id: "done",
+        flow_id: "flow-1",
+        node_key: "details",
+        node_type: "end",
+        config: {},
+      },
     ];
 
     const result = await dispatch({
@@ -981,6 +1016,11 @@ describe("reusable Travel CRM nodes and dynamic lists", () => {
 
     expect(h.crmDestinations).toHaveBeenCalledWith("domestic");
     expect(h.sendList.mock.calls[0]?.[0].sections[0]?.rows).toEqual([
+      {
+        id: "__wacrm_no_destination__",
+        title: "None",
+        description: "domestic",
+      },
       { id: "destination-1", title: "Goa", description: "domestic" },
     ]);
     expect(h.state.updates).toContainEqual(
@@ -990,6 +1030,12 @@ describe("reusable Travel CRM nodes and dynamic lists", () => {
           vars: expect.objectContaining({
             destinations: [
               {
+                destination_id: "__wacrm_no_destination__",
+                destination_name: "None",
+                travel_type: "domestic",
+                assigned_employee_id: null,
+              },
+              {
                 destination_id: "destination-1",
                 destination_name: "Goa",
                 travel_type: "domestic",
@@ -998,6 +1044,146 @@ describe("reusable Travel CRM nodes and dynamic lists", () => {
             ],
           }),
         }),
+      }),
+    );
+    expect(result).toMatchObject({ consumed: true, outcome: "advanced" });
+  });
+
+  it("routes a None destination choice past PDF lookup and into the enquiry questions", async () => {
+    h.state.activeRuns = [
+      {
+        ...RUN,
+        current_node_key: "pick",
+        vars: {
+          destinations: [
+            {
+              destination_id: "__wacrm_no_destination__",
+              destination_name: "None",
+              travel_type: "international",
+              assigned_employee_id: null,
+            },
+          ],
+        },
+      },
+    ];
+    h.state.nodes = [
+      {
+        id: "pick",
+        flow_id: "flow-1",
+        node_key: "pick",
+        node_type: "send_list",
+        config: {
+          text: "Choose a destination",
+          button_label: "View destinations",
+          sections: [],
+          dynamic_source_var: "destinations",
+          dynamic_title_field: "destination_name",
+          dynamic_reply_id_field: "destination_id",
+          dynamic_selection_vars: [
+            { var_key: "travel_type", field: "travel_type" },
+            { var_key: "selected_destination_id", field: "destination_id" },
+            { var_key: "selected_destination_name", field: "destination_name" },
+            {
+              var_key: "selected_assigned_employee_id",
+              field: "assigned_employee_id",
+            },
+          ],
+          dynamic_next_node_key: "destination_branch",
+          dynamic_error_next_node_key: "error",
+        },
+      },
+      {
+        id: "destination_branch",
+        flow_id: "flow-1",
+        node_key: "destination_branch",
+        node_type: "condition",
+        config: {
+          subject: "var",
+          subject_key: "selected_destination_id",
+          operator: "equals",
+          value: "__wacrm_no_destination__",
+          true_next: "ask_name",
+          false_next: "destination_details",
+        },
+      },
+      {
+        id: "destination_details",
+        flow_id: "flow-1",
+        node_key: "destination_details",
+        node_type: "crm_get_destination",
+        config: {
+          destination_id_var: "selected_destination_id",
+          result_var: "destination",
+          next_node_key: "pdf",
+          error_next_node_key: "ask_name",
+        },
+      },
+      {
+        id: "pdf",
+        flow_id: "flow-1",
+        node_key: "pdf",
+        node_type: "send_media",
+        config: {
+          media_type: "document",
+          media_url: "{{destination.pdf_url}}",
+          skip_if_empty: true,
+          next_node_key: "ask_name",
+        },
+      },
+      {
+        id: "ask_name",
+        flow_id: "flow-1",
+        node_key: "ask_name",
+        node_type: "collect_input",
+        config: {
+          var_key: "customer_name",
+          prompt_text: "What is your full name?",
+          next_node_key: "end",
+        },
+      },
+      {
+        id: "end",
+        flow_id: "flow-1",
+        node_key: "end",
+        node_type: "end",
+        config: {},
+      },
+      {
+        id: "error",
+        flow_id: "flow-1",
+        node_key: "error",
+        node_type: "end",
+        config: {},
+      },
+    ];
+
+    const result = await dispatch({
+      kind: "interactive_reply",
+      reply_id: "__wacrm_no_destination__",
+      reply_title: "None",
+      meta_message_id: "select-no-destination",
+    });
+
+    expect(h.crmDestinationDetails).not.toHaveBeenCalled();
+    expect(h.sendMedia).not.toHaveBeenCalled();
+    expect(h.sendText).toHaveBeenCalledWith(
+      expect.objectContaining({ text: "What is your full name?" }),
+    );
+    expect(h.state.updates).toContainEqual(
+      expect.objectContaining({
+        table: "flow_runs",
+        row: expect.objectContaining({
+          vars: expect.objectContaining({
+            selected_destination_id: "__wacrm_no_destination__",
+            travel_type: "international",
+          }),
+        }),
+      }),
+    );
+    expect(h.state.updates).toContainEqual(
+      expect.objectContaining({
+        table: "flow_runs",
+        row: expect.objectContaining({ current_node_key: "ask_name" }),
       }),
     );
     expect(result).toMatchObject({ consumed: true, outcome: "advanced" });
@@ -1044,7 +1230,10 @@ describe("reusable Travel CRM nodes and dynamic lists", () => {
           dynamic_selection_vars: [
             { var_key: "selected_destination_id", field: "destination_id" },
             { var_key: "selected_destination_name", field: "destination_name" },
-            { var_key: "selected_assigned_employee_id", field: "assigned_employee_id" },
+            {
+              var_key: "selected_assigned_employee_id",
+              field: "assigned_employee_id",
+            },
             { var_key: "travel_type", field: "travel_type" },
           ],
           dynamic_next_node_key: "details",
@@ -1075,8 +1264,20 @@ describe("reusable Travel CRM nodes and dynamic lists", () => {
           next_node_key: "end",
         },
       },
-      { id: "end", flow_id: "flow-1", node_key: "end", node_type: "end", config: {} },
-      { id: "error", flow_id: "flow-1", node_key: "error", node_type: "end", config: {} },
+      {
+        id: "end",
+        flow_id: "flow-1",
+        node_key: "end",
+        node_type: "end",
+        config: {},
+      },
+      {
+        id: "error",
+        flow_id: "flow-1",
+        node_key: "error",
+        node_type: "end",
+        config: {},
+      },
     ];
 
     const result = await dispatch({
@@ -1160,8 +1361,20 @@ describe("reusable Travel CRM nodes and dynamic lists", () => {
           next_node_key: "end",
         },
       },
-      { id: "end", flow_id: "flow-1", node_key: "end", node_type: "end", config: {} },
-      { id: "error", flow_id: "flow-1", node_key: "error", node_type: "end", config: {} },
+      {
+        id: "end",
+        flow_id: "flow-1",
+        node_key: "end",
+        node_type: "end",
+        config: {},
+      },
+      {
+        id: "error",
+        flow_id: "flow-1",
+        node_key: "error",
+        node_type: "end",
+        config: {},
+      },
     ];
 
     await dispatch({
@@ -1259,15 +1472,30 @@ describe("reusable Travel CRM nodes and dynamic lists", () => {
         node_type: "send_message",
         config: { text: "Created {{enquiry_number}}", next_node_key: "end" },
       },
-      { id: "end", flow_id: "flow-1", node_key: "end", node_type: "end", config: {} },
+      {
+        id: "end",
+        flow_id: "flow-1",
+        node_key: "end",
+        node_type: "end",
+        config: {},
+      },
       {
         id: "failure",
         flow_id: "flow-1",
         node_key: "failure",
         node_type: "send_message",
-        config: { text: "We could not save your enquiry.", next_node_key: "handoff" },
+        config: {
+          text: "We could not save your enquiry.",
+          next_node_key: "handoff",
+        },
       },
-      { id: "handoff", flow_id: "flow-1", node_key: "handoff", node_type: "handoff", config: {} },
+      {
+        id: "handoff",
+        flow_id: "flow-1",
+        node_key: "handoff",
+        node_type: "handoff",
+        config: {},
+      },
     ];
 
     const result = await dispatch({
@@ -1279,7 +1507,10 @@ describe("reusable Travel CRM nodes and dynamic lists", () => {
 
     expect(h.completeCrmFlow).toHaveBeenCalledWith(
       expect.objectContaining({
-        contact: expect.objectContaining({ phone: "+919876543210", name: "Asha" }),
+        contact: expect.objectContaining({
+          phone: "+919876543210",
+          name: "Asha",
+        }),
         destination: expect.objectContaining({
           id: "00000000-0000-4000-8000-000000000001",
           assigned_employee_id: "00000000-0000-4000-8000-000000000002",
@@ -1298,10 +1529,134 @@ describe("reusable Travel CRM nodes and dynamic lists", () => {
         }),
       }),
     );
-    expect(h.sendText).toHaveBeenCalledWith(
-      expect.objectContaining({ text: "Created ENQ-1" }),
-    );
+    expect(h.sendText).toHaveBeenCalledWith(expect.objectContaining({ text: "Created ENQ-1" }));
     expect(result).toMatchObject({ consumed: true, outcome: "completed" });
+  });
+
+  it("saves the remaining enquiry fields without assigning a destination for None", async () => {
+    h.state.contacts = [
+      {
+        id: "ct-1",
+        name: "Contact",
+        email: null,
+        phone: "+919876543210",
+      },
+    ];
+    h.state.activeRuns = [
+      {
+        ...RUN,
+        current_node_key: "menu",
+        vars: {
+          customer_name: "Asha",
+          travel_type: "international",
+          selected_destination_id: "__wacrm_no_destination__",
+          selected_destination_name: "None",
+          travel_date: "2026-12-20",
+          adults: "2",
+          children: "1",
+          budget: "INR 50000",
+          special_requirements: "Vegetarian meals",
+        },
+      },
+    ];
+    h.state.nodes = [
+      {
+        id: "menu",
+        flow_id: "flow-1",
+        node_key: "menu",
+        node_type: "send_buttons",
+        config: {
+          text: "Continue",
+          buttons: [{ reply_id: "complete", title: "Complete", next_node_key: "crm" }],
+        },
+      },
+      {
+        id: "crm",
+        flow_id: "flow-1",
+        node_key: "crm",
+        node_type: "crm_complete_enquiry",
+        config: {
+          input_mapping: {
+            customer_name: "customer_name",
+            travel_type: "travel_type",
+            destination_id: "selected_destination_id",
+            destination_name: "selected_destination_name",
+            travel_date: "travel_date",
+            adults: "adults",
+            children: "children",
+            budget: "budget",
+            special_requirements: "special_requirements",
+          },
+          next_node_key: "success",
+          error_next_node_key: "failure",
+        },
+      },
+      {
+        id: "success",
+        flow_id: "flow-1",
+        node_key: "success",
+        node_type: "send_message",
+        config: { text: "Saved", next_node_key: "end" },
+      },
+      {
+        id: "end",
+        flow_id: "flow-1",
+        node_key: "end",
+        node_type: "end",
+        config: {},
+      },
+      {
+        id: "failure",
+        flow_id: "flow-1",
+        node_key: "failure",
+        node_type: "end",
+        config: {},
+      },
+    ];
+
+    await dispatch({
+      kind: "interactive_reply",
+      reply_id: "complete",
+      reply_title: "Complete",
+      meta_message_id: "complete-no-destination-enquiry",
+    });
+
+    expect(h.completeCrmFlow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destination: null,
+        answers: expect.objectContaining({
+          customer_name: "Asha",
+          travel_type: "international",
+          travel_date: "2026-12-20",
+          adults: "2",
+          children: "1",
+          budget: "INR 50000",
+          special_requirements: "Vegetarian meals",
+        }),
+      }),
+    );
+    expect(h.completeCrmFlow).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        answers: expect.objectContaining({
+          destination_id: "__wacrm_no_destination__",
+          destination_name: "None",
+        }),
+      }),
+    );
+    expect(h.completeCrmFlow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destination: null,
+        answers: expect.not.objectContaining({
+          destination_id: "__wacrm_no_destination__",
+        }),
+      }),
+    );
+    expect(h.completeCrmFlow).toHaveBeenCalledWith(
+      expect.objectContaining({
+        destination: null,
+        answers: expect.not.objectContaining({ destination_name: "None" }),
+      }),
+    );
   });
 
   it("routes a CRM write failure to the error path without sending a success message", async () => {
@@ -1343,15 +1698,30 @@ describe("reusable Travel CRM nodes and dynamic lists", () => {
         node_type: "send_message",
         config: { text: "Your enquiry was created.", next_node_key: "end" },
       },
-      { id: "end", flow_id: "flow-1", node_key: "end", node_type: "end", config: {} },
+      {
+        id: "end",
+        flow_id: "flow-1",
+        node_key: "end",
+        node_type: "end",
+        config: {},
+      },
       {
         id: "failure",
         flow_id: "flow-1",
         node_key: "failure",
         node_type: "send_message",
-        config: { text: "We could not save your enquiry.", next_node_key: "handoff" },
+        config: {
+          text: "We could not save your enquiry.",
+          next_node_key: "handoff",
+        },
       },
-      { id: "handoff", flow_id: "flow-1", node_key: "handoff", node_type: "handoff", config: {} },
+      {
+        id: "handoff",
+        flow_id: "flow-1",
+        node_key: "handoff",
+        node_type: "handoff",
+        config: {},
+      },
     ];
 
     const result = await dispatch({
@@ -1418,7 +1788,11 @@ describe("send_buttons / send_list interpolate {{vars.*}} (#553)", () => {
       {
         title: "Plans for Alice",
         rows: [
-          { id: "basic", title: "Basic for Alice", description: "Best for Alice" },
+          {
+            id: "basic",
+            title: "Basic for Alice",
+            description: "Best for Alice",
+          },
           { id: "pro", title: "Pro", description: undefined },
         ],
       },
@@ -1428,17 +1802,13 @@ describe("send_buttons / send_list interpolate {{vars.*}} (#553)", () => {
   it("reprompt re-sends the interactive node with the same interpolation", async () => {
     // Run already suspended on the buttons node with the var captured;
     // the customer types instead of tapping → fallback → reprompt.
-    h.state.activeRuns = [
-      { ...RUN, current_node_key: "choose", vars: { name: "Alice" } },
-    ];
+    h.state.activeRuns = [{ ...RUN, current_node_key: "choose", vars: { name: "Alice" } }];
 
     const result = await dispatch(text("huh?"));
 
     expect(result).toMatchObject({ consumed: true, outcome: "fallback_fired" });
     expect(h.sendButtons).toHaveBeenCalledTimes(1);
-    expect(h.sendButtons.mock.calls[0][0].bodyText).toBe(
-      "Hi Alice, please choose an option.",
-    );
+    expect(h.sendButtons.mock.calls[0][0].bodyText).toBe("Hi Alice, please choose an option.");
     expect(h.sendButtons.mock.calls[0][0].buttons[0]).toEqual({
       id: "yes",
       title: "Yes, Alice",
@@ -1447,9 +1817,7 @@ describe("send_buttons / send_list interpolate {{vars.*}} (#553)", () => {
 
   describe("collect_input validation", () => {
     beforeEach(() => {
-      h.state.activeRuns = [
-        { ...RUN, current_node_key: "ask_travel_date", reprompt_count: 2 },
-      ];
+      h.state.activeRuns = [{ ...RUN, current_node_key: "ask_travel_date", reprompt_count: 2 }];
       h.state.flows = [FLOW];
       h.state.nodes = [
         {
@@ -1464,7 +1832,13 @@ describe("send_buttons / send_list interpolate {{vars.*}} (#553)", () => {
             next_node_key: "done",
           },
         },
-        { id: "end-node", flow_id: "flow-1", node_key: "done", node_type: "end", config: {} },
+        {
+          id: "end-node",
+          flow_id: "flow-1",
+          node_key: "done",
+          node_type: "end",
+          config: {},
+        },
       ];
       h.state.events = [];
       h.state.updates = [];
@@ -1477,10 +1851,11 @@ describe("send_buttons / send_list interpolate {{vars.*}} (#553)", () => {
 
       const result = await dispatch(text("next Friday"));
 
-      expect(result).toMatchObject({ consumed: true, outcome: "fallback_fired" });
-      expect(h.sendText).toHaveBeenCalledWith(
-        expect.objectContaining({ text: prompt }),
-      );
+      expect(result).toMatchObject({
+        consumed: true,
+        outcome: "fallback_fired",
+      });
+      expect(h.sendText).toHaveBeenCalledWith(expect.objectContaining({ text: prompt }));
       expect(h.state.events).toContainEqual(
         expect.objectContaining({
           event_type: "fallback_fired",
@@ -1494,8 +1869,7 @@ describe("send_buttons / send_list interpolate {{vars.*}} (#553)", () => {
       expect(
         h.state.updates.some(
           ({ table, row }) =>
-            table === "flow_runs" &&
-            (row.status === "handed_off" || row.status === "completed"),
+            table === "flow_runs" && (row.status === "handed_off" || row.status === "completed"),
         ),
       ).toBe(false);
       expect(h.state.updates).not.toContainEqual(
@@ -1528,9 +1902,7 @@ describe("send_buttons / send_list interpolate {{vars.*}} (#553)", () => {
     // rejects titles over INTERACTIVE_LIMITS.buttonTitleMaxLength (20)
     // before calling Meta. The stub stands in for that throw.
     h.sendButtons.mockRejectedValueOnce(
-      new Error(
-        'Interactive button title "Yes, Bartholomew Montgomery" exceeds 20 chars.',
-      ),
+      new Error('Interactive button title "Yes, Bartholomew Montgomery" exceeds 20 chars.'),
     );
 
     const result = await dispatch(text("Bartholomew Montgomery"));

@@ -4,6 +4,7 @@ import type { Json } from "@/integrations/supabase/types";
 import { cleanEnvironmentValue } from "@/lib/environment-value";
 import {
   readWacrmFlowCompletionBody,
+  normalizeWacrmFlowAnswers,
   verifyWacrmFlowCompletionSignature,
   wacrmFlowCompletionSchema,
 } from "@/lib/wacrm-flow-completion.server";
@@ -62,7 +63,7 @@ async function receiveFlowCompletion(request: Request): Promise<Response> {
     p_completed_at: completion.completed_at,
     p_is_partial: completion.is_partial ?? false,
     p_handoff_requested: completion.handoff_requested ?? false,
-    p_answers: JSON.parse(JSON.stringify(completion.answers)) as Json,
+    p_answers: JSON.parse(JSON.stringify(normalizeWacrmFlowAnswers(completion.answers))) as Json,
     p_destination_id: completion.destination?.id ?? null,
     p_assigned_employee_id: completion.destination?.assigned_employee_id ?? null,
   });

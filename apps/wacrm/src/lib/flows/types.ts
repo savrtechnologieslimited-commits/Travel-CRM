@@ -122,9 +122,12 @@ export interface CrmDestinationNodeConfig {
 export interface TravelCrmGetDestinationsNodeConfig {
   travel_type: "domestic" | "international";
   result_var: string;
+  include_none_option?: boolean;
   next_node_key: string;
   error_next_node_key: string;
 }
+
+export const NO_DESTINATION_OPTION_ID = "__wacrm_no_destination__";
 
 export interface TravelCrmGetDestinationNodeConfig {
   destination_id_var: string;
@@ -193,11 +196,7 @@ export interface CollectInputNodeConfig {
   next_node_key: string;
 }
 
-export type ConditionOperator =
-  | "equals"
-  | "contains"
-  | "present"
-  | "absent";
+export type ConditionOperator = "equals" | "contains" | "present" | "absent";
 
 export type ConditionSubject = "var" | "tag" | "contact_field";
 
@@ -334,13 +333,7 @@ export interface FlowRunRow {
   user_id: string;
   contact_id: string | null;
   conversation_id: string | null;
-  status:
-    | "active"
-    | "completed"
-    | "handed_off"
-    | "timed_out"
-    | "paused_by_agent"
-    | "failed";
+  status: "active" | "completed" | "handed_off" | "timed_out" | "paused_by_agent" | "failed";
   current_node_key: string | null;
   last_prompt_message_id: string | null;
   vars: Record<string, unknown>;

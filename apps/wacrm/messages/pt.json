@@ -1172,6 +1172,7 @@
         "crmDomestic": "Nacional",
         "crmInternational": "Internacional",
         "crmResultVariable": "Variável de resultado",
+        "includeNoneDestination": "Incluir a opção de destino Nenhum",
         "crmDestinationIdVariable": "Variável do ID do destino",
         "crmDestinationDetailsHelp": "Retorna o destino ativo, o funcionário atribuído e uma URL assinada temporária do PDF, quando disponível.",
         "crmSuccessPath": "Em caso de sucesso, seguir para",

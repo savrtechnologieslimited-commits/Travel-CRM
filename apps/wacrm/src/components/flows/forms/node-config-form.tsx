@@ -25,19 +25,13 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Loader2,
-  Paperclip,
-  Plus,
-  Trash2,
-  Upload,
-  X,
-} from "lucide-react";
+import { Loader2, Paperclip, Plus, Trash2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   Select,
   SelectContent,
@@ -149,7 +143,7 @@ export function NodeConfigForm({
             rows={2}
           />
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
+            <label className="text-muted-foreground mb-1 block text-xs">
               {t("crmDestinationButtonLabel")}
             </label>
             <Input
@@ -159,11 +153,9 @@ export function NodeConfigForm({
               className="bg-muted text-xs"
             />
           </div>
-          <p className="text-[11px] text-muted-foreground">
-            {t("crmDestinationHelp")}
-          </p>
+          <p className="text-muted-foreground text-[11px]">{t("crmDestinationHelp")}</p>
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
+            <label className="text-muted-foreground mb-1 block text-xs">
               {t("crmDestinationScope")}
             </label>
             <Select
@@ -238,18 +230,13 @@ export function NodeConfigForm({
             label={t("promptToCustomer")}
             value={formatCollectInputPrompt(
               (cfg as { prompt_text?: string }).prompt_text ?? "",
-              cfg as Pick<
-                CollectInputNodeConfig,
-                "prompt_text" | "validation"
-              >,
+              cfg as Pick<CollectInputNodeConfig, "prompt_text" | "validation">,
             )}
             onChange={(v) => onUpdateConfig({ prompt_text: v })}
             rows={2}
           />
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
-              {t("varKeyLabel")}
-            </label>
+            <label className="text-muted-foreground mb-1 block text-xs">{t("varKeyLabel")}</label>
             <Input
               value={(cfg as { var_key?: string }).var_key ?? ""}
               onChange={(e) =>
@@ -260,9 +247,9 @@ export function NodeConfigForm({
               placeholder={t("varKeyPlaceholder")}
               className="bg-muted font-mono text-xs"
             />
-            <p className="mt-1 text-[10px] text-muted-foreground">
+            <p className="text-muted-foreground mt-1 text-[10px]">
               {t("varKeyHelp")}{" "}
-              <code className="rounded bg-muted px-1">
+              <code className="bg-muted rounded px-1">
                 {"{{vars."}
                 {(cfg as { var_key?: string }).var_key || "name"}
                 {"}}"}
@@ -271,7 +258,7 @@ export function NodeConfigForm({
             </p>
           </div>
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">
+            <label className="text-muted-foreground mb-1 block text-xs">
               {t("inputValidationLabel")}
             </label>
             <Select
@@ -294,9 +281,7 @@ export function NodeConfigForm({
                 <SelectItem value="regex">{t("inputValidationRegex")}</SelectItem>
               </SelectContent>
             </Select>
-            <p className="mt-1 text-[10px] text-muted-foreground">
-              {t("inputValidationHelp")}
-            </p>
+            <p className="text-muted-foreground mt-1 text-[10px]">{t("inputValidationHelp")}</p>
           </div>
           {inputConfig.validation === "regex" && (
             <TextRow
@@ -356,11 +341,7 @@ export function NodeConfigForm({
       );
 
     case "end":
-      return (
-        <p className="text-xs text-muted-foreground">
-          {t("endNodeHelp")}
-        </p>
-      );
+      return <p className="text-muted-foreground text-xs">{t("endNodeHelp")}</p>;
   }
 }
 
@@ -380,9 +361,7 @@ function TravelCrmGetDestinationsForm({
   return (
     <>
       <div>
-        <label className="mb-1 block text-xs text-muted-foreground">
-          {t("crmTravelType")}
-        </label>
+        <label className="text-muted-foreground mb-1 block text-xs">{t("crmTravelType")}</label>
         <Select
           value={cfg.travel_type ?? "domestic"}
           onValueChange={(value) =>
@@ -405,6 +384,16 @@ function TravelCrmGetDestinationsForm({
         value={cfg.result_var}
         onChange={(value) => onUpdateConfig({ result_var: value.replace(/[^a-zA-Z0-9_]/g, "") })}
       />
+      <div className="flex items-center justify-between gap-3">
+        <label className="text-muted-foreground text-xs" htmlFor={`crm-none-option-${currentKey}`}>
+          {t("includeNoneDestination")}
+        </label>
+        <Switch
+          id={`crm-none-option-${currentKey}`}
+          checked={cfg.include_none_option ?? false}
+          onCheckedChange={(checked) => onUpdateConfig({ include_none_option: checked })}
+        />
+      </div>
       <NextNodeRow
         value={cfg.next_node_key}
         allNodes={allNodes}
@@ -441,16 +430,18 @@ function TravelCrmGetDestinationForm({
       <TextRow
         label={t("crmDestinationIdVariable")}
         value={cfg.destination_id_var}
-        onChange={(value) => onUpdateConfig({ destination_id_var: value.replace(/[^a-zA-Z0-9_.]/g, "") })}
+        onChange={(value) =>
+          onUpdateConfig({
+            destination_id_var: value.replace(/[^a-zA-Z0-9_.]/g, ""),
+          })
+        }
       />
       <TextRow
         label={t("crmResultVariable")}
         value={cfg.result_var}
         onChange={(value) => onUpdateConfig({ result_var: value.replace(/[^a-zA-Z0-9_]/g, "") })}
       />
-      <p className="text-[11px] text-muted-foreground">
-        {t("crmDestinationDetailsHelp")}
-      </p>
+      <p className="text-muted-foreground text-[11px]">{t("crmDestinationDetailsHelp")}</p>
       <NextNodeRow
         value={cfg.next_node_key}
         allNodes={allNodes}
@@ -501,13 +492,14 @@ function TravelCrmCompleteEnquiryForm({
   const mapping = cfg.input_mapping ?? {};
   const updateMapping = (field: TravelCrmEnquiryField, value: string) =>
     onUpdateConfig({
-      input_mapping: { ...mapping, [field]: value.replace(/[^a-zA-Z0-9_.]/g, "") },
+      input_mapping: {
+        ...mapping,
+        [field]: value.replace(/[^a-zA-Z0-9_.]/g, ""),
+      },
     });
   return (
     <>
-      <p className="text-[11px] text-muted-foreground">
-        {t("crmCompleteEnquiryHelp")}
-      </p>
+      <p className="text-muted-foreground text-[11px]">{t("crmCompleteEnquiryHelp")}</p>
       {ENQUIRY_MAPPING_FIELDS.map((field) => (
         <TextRow
           key={field}
@@ -597,19 +589,15 @@ function SendButtonsForm({
       />
       <div>
         <div className="mb-2 flex items-center justify-between">
-          <label className="text-xs text-muted-foreground">
-            {t("buttonsHelp")}
-          </label>
+          <label className="text-muted-foreground text-xs">{t("buttonsHelp")}</label>
         </div>
         <div className="flex flex-col gap-3">
           {buttons.map((b, i) => (
             <div
               key={i}
               className={cn(
-                "grid grid-cols-1 gap-2 rounded-md border border-border bg-muted/40 p-3",
-                showAdvanced
-                  ? "md:grid-cols-[1fr_2fr_2fr_auto]"
-                  : "md:grid-cols-[2fr_2fr_auto]",
+                "border-border bg-muted/40 grid grid-cols-1 gap-2 rounded-md border p-3",
+                showAdvanced ? "md:grid-cols-[1fr_2fr_2fr_auto]" : "md:grid-cols-[2fr_2fr_auto]",
               )}
             >
               {showAdvanced && (
@@ -650,12 +638,7 @@ function SendButtonsForm({
           ))}
         </div>
         {buttons.length < 3 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={addButton}
-            className="mt-2"
-          >
+          <Button variant="ghost" size="sm" onClick={addButton} className="mt-2">
             <Plus className="h-3.5 w-3.5" />
             {t("addButton")}
           </Button>
@@ -715,9 +698,7 @@ function SendListForm({
     patch: Partial<NonNullable<SendListCfg["sections"]>[number]>,
   ) => {
     onUpdateConfig({
-      sections: sections.map((s, i) =>
-        i === sIdx ? { ...s, ...patch } : s,
-      ),
+      sections: sections.map((s, i) => (i === sIdx ? { ...s, ...patch } : s)),
     });
   };
   const addSection = () =>
@@ -741,9 +722,7 @@ function SendListForm({
   const updateRow = (
     sIdx: number,
     rIdx: number,
-    patch: Partial<
-      NonNullable<SendListCfg["sections"]>[number]["rows"][number]
-    >,
+    patch: Partial<NonNullable<SendListCfg["sections"]>[number]["rows"][number]>,
   ) => {
     onUpdateConfig({
       sections: sections.map((s, i) =>
@@ -821,9 +800,18 @@ function SendListForm({
                 dynamic_description_field: "travel_type",
                 dynamic_selection_vars: [
                   { var_key: "travel_type", field: "travel_type" },
-                  { var_key: "selected_destination_id", field: "destination_id" },
-                  { var_key: "selected_destination_name", field: "destination_name" },
-                  { var_key: "selected_assigned_employee_id", field: "assigned_employee_id" },
+                  {
+                    var_key: "selected_destination_id",
+                    field: "destination_id",
+                  },
+                  {
+                    var_key: "selected_destination_name",
+                    field: "destination_name",
+                  },
+                  {
+                    var_key: "selected_assigned_employee_id",
+                    field: "assigned_employee_id",
+                  },
                 ],
               })
         }
@@ -858,7 +846,7 @@ function SendListForm({
             onChange={(value) => onUpdateConfig({ dynamic_description_field: value })}
           />
           <div>
-            <label className="mb-2 block text-xs text-muted-foreground">
+            <label className="text-muted-foreground mb-2 block text-xs">
               {t("dynamicListSelectedMappings")}
             </label>
             {(cfg.dynamic_selection_vars ?? []).map((mapping, index) => (
@@ -895,8 +883,9 @@ function SendListForm({
                     size="sm"
                     onClick={() =>
                       onUpdateConfig({
-                        dynamic_selection_vars: (cfg.dynamic_selection_vars ?? [])
-                          .filter((_, mappingIndex) => mappingIndex !== index),
+                        dynamic_selection_vars: (cfg.dynamic_selection_vars ?? []).filter(
+                          (_, mappingIndex) => mappingIndex !== index,
+                        ),
                       })
                     }
                     aria-label={t("removeRow")}
@@ -936,117 +925,98 @@ function SendListForm({
             onChange={(value) => onUpdateConfig({ dynamic_error_next_node_key: value })}
             label={t("crmFailurePath")}
           />
-          <p className="text-[11px] text-muted-foreground">
-            {t("dynamicListHelp")}
-          </p>
+          <p className="text-muted-foreground text-[11px]">{t("dynamicListHelp")}</p>
         </div>
       ) : (
-      <div className="mt-2">
-        <label className="mb-2 block text-xs text-muted-foreground">
-          {t("rowsHelp")}
-        </label>
-        {sections.map((section, sIdx) => (
-          <div
-            key={sIdx}
-            className="mb-3 rounded-md border border-border bg-muted/40 p-3"
-          >
-            <div className="mb-2 flex items-center gap-2">
-              <Input
-                value={section.title ?? ""}
-                onChange={(e) =>
-                  updateSection(sIdx, { title: e.target.value })
-                }
-                placeholder={t("sectionTitlePlaceholder", { count: sIdx + 1 })}
-                className="bg-muted text-xs"
-              />
-              {sections.length > 1 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeSection(sIdx)}
-                  className="shrink-0 text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                  aria-label={t("removeSection")}
+        <div className="mt-2">
+          <label className="text-muted-foreground mb-2 block text-xs">{t("rowsHelp")}</label>
+          {sections.map((section, sIdx) => (
+            <div key={sIdx} className="border-border bg-muted/40 mb-3 rounded-md border p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <Input
+                  value={section.title ?? ""}
+                  onChange={(e) => updateSection(sIdx, { title: e.target.value })}
+                  placeholder={t("sectionTitlePlaceholder", {
+                    count: sIdx + 1,
+                  })}
+                  className="bg-muted text-xs"
+                />
+                {sections.length > 1 && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeSection(sIdx)}
+                    className="shrink-0 text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                    aria-label={t("removeSection")}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+              {section.rows.map((row, rIdx) => (
+                <div
+                  key={rIdx}
+                  className={cn(
+                    "mb-2 grid grid-cols-1 gap-2",
+                    showAdvanced
+                      ? "md:grid-cols-[1fr_2fr_2fr_auto]"
+                      : "md:grid-cols-[2fr_2fr_auto]",
+                  )}
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  {showAdvanced && (
+                    <Input
+                      value={row.reply_id}
+                      onChange={(e) =>
+                        updateRow(sIdx, rIdx, {
+                          reply_id: slugify(e.target.value, `row_${rIdx + 1}`),
+                        })
+                      }
+                      placeholder="reply_id"
+                      className="bg-muted font-mono text-xs"
+                    />
+                  )}
+                  <Input
+                    value={row.title}
+                    onChange={(e) => updateRow(sIdx, rIdx, { title: e.target.value })}
+                    placeholder={t("rowTitlePlaceholder")}
+                    className="bg-muted"
+                    maxLength={24}
+                  />
+                  <NodeKeySelect
+                    value={row.next_node_key || null}
+                    nodes={allNodes}
+                    excludeKey={currentKey}
+                    onChange={(v) => updateRow(sIdx, rIdx, { next_node_key: v ?? "" })}
+                    placeholder={t("nextNodePlaceholder")}
+                  />
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeRow(sIdx, rIdx)}
+                    className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              ))}
+              {totalRows < 10 && (
+                <Button variant="ghost" size="sm" onClick={() => addRow(sIdx)} className="mt-1">
+                  <Plus className="h-3.5 w-3.5" />
+                  {t("addRow")}
                 </Button>
               )}
             </div>
-            {section.rows.map((row, rIdx) => (
-              <div
-                key={rIdx}
-                className={cn(
-                  "mb-2 grid grid-cols-1 gap-2",
-                  showAdvanced
-                    ? "md:grid-cols-[1fr_2fr_2fr_auto]"
-                    : "md:grid-cols-[2fr_2fr_auto]",
-                )}
-              >
-                {showAdvanced && (
-                  <Input
-                    value={row.reply_id}
-                    onChange={(e) =>
-                      updateRow(sIdx, rIdx, {
-                        reply_id: slugify(
-                          e.target.value,
-                          `row_${rIdx + 1}`,
-                        ),
-                      })
-                    }
-                    placeholder="reply_id"
-                    className="bg-muted font-mono text-xs"
-                  />
-                )}
-                <Input
-                  value={row.title}
-                  onChange={(e) =>
-                    updateRow(sIdx, rIdx, { title: e.target.value })
-                  }
-                  placeholder={t("rowTitlePlaceholder")}
-                  className="bg-muted"
-                  maxLength={24}
-                />
-                <NodeKeySelect
-                  value={row.next_node_key || null}
-                  nodes={allNodes}
-                  excludeKey={currentKey}
-                  onChange={(v) =>
-                    updateRow(sIdx, rIdx, { next_node_key: v ?? "" })
-                  }
-                  placeholder={t("nextNodePlaceholder")}
-                />
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeRow(sIdx, rIdx)}
-                  className="text-red-400 hover:bg-red-500/10 hover:text-red-300"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            ))}
-            {totalRows < 10 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => addRow(sIdx)}
-                className="mt-1"
-              >
-                <Plus className="h-3.5 w-3.5" />
-                {t("addRow")}
-              </Button>
-            )}
-          </div>
-        ))}
-        {/* WhatsApp's interactive-list spec caps sections at 10. Group rows
+          ))}
+          {/* WhatsApp's interactive-list spec caps sections at 10. Group rows
             by category (Billing / Support / Sales etc.) to give customers a
             scannable menu. */}
-        {sections.length < 10 && (
-          <Button variant="outline" size="sm" onClick={addSection}>
-            <Plus className="h-3.5 w-3.5" />
-            {t("addSection")}
-          </Button>
-        )}
-      </div>
+          {sections.length < 10 && (
+            <Button variant="outline" size="sm" onClick={addSection}>
+              <Plus className="h-3.5 w-3.5" />
+              {t("addSection")}
+            </Button>
+          )}
+        </div>
       )}
     </>
   );
@@ -1094,12 +1064,10 @@ function ConditionForm({
     <>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <div>
-          <label className="mb-1 block text-xs text-muted-foreground">{t("ifLabel")}</label>
+          <label className="text-muted-foreground mb-1 block text-xs">{t("ifLabel")}</label>
           <Select
             value={subject}
-            onValueChange={(v) =>
-              onUpdateConfig({ subject: v as ConditionCfg["subject"] })
-            }
+            onValueChange={(v) => onUpdateConfig({ subject: v as ConditionCfg["subject"] })}
           >
             <SelectTrigger className="bg-muted">
               <SelectValue />
@@ -1112,12 +1080,8 @@ function ConditionForm({
           </Select>
         </div>
         <div className="md:col-span-2">
-          <label className="mb-1 block text-xs text-muted-foreground">
-            {subject === "var"
-              ? t("varName")
-              : subject === "tag"
-                ? t("tagLabel")
-                : t("fieldLabel")}
+          <label className="text-muted-foreground mb-1 block text-xs">
+            {subject === "var" ? t("varName") : subject === "tag" ? t("tagLabel") : t("fieldLabel")}
           </label>
           {subject === "tag" && tags.length > 0 ? (
             <Select
@@ -1153,9 +1117,7 @@ function ConditionForm({
           ) : (
             <Input
               value={cfg.subject_key ?? ""}
-              onChange={(e) =>
-                onUpdateConfig({ subject_key: e.target.value })
-              }
+              onChange={(e) => onUpdateConfig({ subject_key: e.target.value })}
               placeholder={subject === "var" ? t("varKeyPlaceholder") : t("tagUuidPlaceholder")}
               className="bg-muted font-mono text-xs"
             />
@@ -1163,19 +1125,12 @@ function ConditionForm({
         </div>
       </div>
 
-      <div
-        className={cn(
-          "grid grid-cols-1 gap-3",
-          showValue ? "md:grid-cols-2" : "",
-        )}
-      >
+      <div className={cn("grid grid-cols-1 gap-3", showValue ? "md:grid-cols-2" : "")}>
         <div>
-          <label className="mb-1 block text-xs text-muted-foreground">{t("operatorLabel")}</label>
+          <label className="text-muted-foreground mb-1 block text-xs">{t("operatorLabel")}</label>
           <Select
             value={operator}
-            onValueChange={(v) =>
-              onUpdateConfig({ operator: v as ConditionCfg["operator"] })
-            }
+            onValueChange={(v) => onUpdateConfig({ operator: v as ConditionCfg["operator"] })}
           >
             <SelectTrigger className="bg-muted">
               <SelectValue />
@@ -1190,7 +1145,7 @@ function ConditionForm({
         </div>
         {showValue && (
           <div>
-            <label className="mb-1 block text-xs text-muted-foreground">{t("valueLabel")}</label>
+            <label className="text-muted-foreground mb-1 block text-xs">{t("valueLabel")}</label>
             <Input
               value={cfg.value ?? ""}
               onChange={(e) => onUpdateConfig({ value: e.target.value })}
@@ -1249,12 +1204,10 @@ function SetTagForm({
     <>
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         <div>
-          <label className="mb-1 block text-xs text-muted-foreground">{t("actionLabel")}</label>
+          <label className="text-muted-foreground mb-1 block text-xs">{t("actionLabel")}</label>
           <Select
             value={cfg.mode ?? "add"}
-            onValueChange={(v) =>
-              onUpdateConfig({ mode: v as SetTagCfg["mode"] })
-            }
+            onValueChange={(v) => onUpdateConfig({ mode: v as SetTagCfg["mode"] })}
           >
             <SelectTrigger className="bg-muted">
               <SelectValue />
@@ -1266,12 +1219,9 @@ function SetTagForm({
           </Select>
         </div>
         <div>
-          <label className="mb-1 block text-xs text-muted-foreground">{t("tagLabel")}</label>
+          <label className="text-muted-foreground mb-1 block text-xs">{t("tagLabel")}</label>
           {tags.length > 0 ? (
-            <Select
-              value={cfg.tag_id ?? ""}
-              onValueChange={(v) => onUpdateConfig({ tag_id: v })}
-            >
+            <Select value={cfg.tag_id ?? ""} onValueChange={(v) => onUpdateConfig({ tag_id: v })}>
               <SelectTrigger className="bg-muted">
                 <SelectValue placeholder={t("pickTag")} />
               </SelectTrigger>
@@ -1374,17 +1324,13 @@ function SendMediaForm({
 
   const mediaType = cfg.media_type ?? "image";
   const isDocument = mediaType === "document";
-  const displayName =
-    cfg.filename ||
-    (cfg.media_url ? cfg.media_url.split("/").pop() ?? "" : "");
+  const displayName = cfg.filename || (cfg.media_url ? (cfg.media_url.split("/").pop() ?? "") : "");
   const isVariableUrl = /\{\{.+\}\}/.test(cfg.media_url ?? "");
 
   const handleFile = useCallback(
     async (file: File) => {
       if (file.size > MEDIA_MAX_BYTES) {
-        toast.error(
-          t("fileTooLarge", { size: (file.size / 1024 / 1024).toFixed(1) }),
-        );
+        toast.error(t("fileTooLarge", { size: (file.size / 1024 / 1024).toFixed(1) }));
         return;
       }
       setUploading(true);
@@ -1416,7 +1362,7 @@ function SendMediaForm({
   return (
     <>
       <div>
-        <label className="mb-1 block text-xs text-muted-foreground">{t("mediaTypeLabel")}</label>
+        <label className="text-muted-foreground mb-1 block text-xs">{t("mediaTypeLabel")}</label>
         <Select
           value={mediaType}
           onValueChange={(v) => {
@@ -1436,23 +1382,21 @@ function SendMediaForm({
           <SelectContent>
             <SelectItem value="image">{t("imageLabel")}</SelectItem>
             <SelectItem value="video">{t("videoLabel")}</SelectItem>
-            <SelectItem value="document">
-              {t("documentLabel")}
-            </SelectItem>
+            <SelectItem value="document">{t("documentLabel")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
 
       <div>
-        <label className="mb-1 block text-xs text-muted-foreground">{t("fileLabel")}</label>
+        <label className="text-muted-foreground mb-1 block text-xs">{t("fileLabel")}</label>
         {cfg.media_url && !isVariableUrl ? (
-          <div className="flex items-center gap-2 rounded-md border border-border bg-muted px-3 py-2 text-xs">
+          <div className="border-border bg-muted flex items-center gap-2 rounded-md border px-3 py-2 text-xs">
             <Paperclip className="h-3.5 w-3.5 shrink-0 text-cyan-400" />
             <a
               href={cfg.media_url}
               target="_blank"
               rel="noopener noreferrer"
-              className="min-w-0 flex-1 truncate text-foreground hover:text-cyan-300"
+              className="text-foreground min-w-0 flex-1 truncate hover:text-cyan-300"
               title={displayName || cfg.media_url}
             >
               {displayName || cfg.media_url}
@@ -1460,7 +1404,7 @@ function SendMediaForm({
             <button
               type="button"
               onClick={handleClear}
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="text-muted-foreground hover:bg-muted hover:text-foreground rounded p-1"
               aria-label={t("removeFile")}
               disabled={uploading}
             >
@@ -1472,7 +1416,7 @@ function SendMediaForm({
             type="button"
             onClick={() => fileInputRef.current?.click()}
             disabled={uploading}
-            className="flex w-full items-center justify-center gap-2 rounded-md border border-dashed border-border bg-card px-3 py-4 text-xs text-muted-foreground transition-colors hover:border-border hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
+            className="border-border bg-card text-muted-foreground hover:border-border hover:bg-muted hover:text-foreground flex w-full items-center justify-center gap-2 rounded-md border border-dashed px-3 py-4 text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60"
           >
             {uploading ? (
               <>
@@ -1502,26 +1446,20 @@ function SendMediaForm({
       </div>
 
       <div>
-        <label className="mb-1 block text-xs text-muted-foreground">
-          {t("mediaUrlLabel")}
-        </label>
+        <label className="text-muted-foreground mb-1 block text-xs">{t("mediaUrlLabel")}</label>
         <Input
           value={cfg.media_url ?? ""}
           onChange={(event) => onUpdateConfig({ media_url: event.target.value })}
           placeholder="{{destination.pdf_url}}"
           className="bg-muted font-mono text-xs"
         />
-        <p className="mt-1 text-[10px] text-muted-foreground">
-          {t("mediaUrlHelp")}
-        </p>
+        <p className="text-muted-foreground mt-1 text-[10px]">{t("mediaUrlHelp")}</p>
       </div>
-      <label className="flex items-center gap-2 text-xs text-muted-foreground">
+      <label className="text-muted-foreground flex items-center gap-2 text-xs">
         <input
           type="checkbox"
           checked={cfg.skip_if_empty === true}
-          onChange={(event) =>
-            onUpdateConfig({ skip_if_empty: event.target.checked })
-          }
+          onChange={(event) => onUpdateConfig({ skip_if_empty: event.target.checked })}
           className="accent-primary"
         />
         {t("mediaSkipIfEmpty")}
@@ -1536,9 +1474,7 @@ function SendMediaForm({
 
       {isDocument && (
         <div>
-          <label className="mb-1 block text-xs text-muted-foreground">
-            {t("filenameLabel")}
-          </label>
+          <label className="text-muted-foreground mb-1 block text-xs">{t("filenameLabel")}</label>
           <Input
             value={cfg.filename ?? ""}
             onChange={(e) => onUpdateConfig({ filename: e.target.value })}

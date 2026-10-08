@@ -40,10 +40,7 @@ import {
   engineSendText,
 } from "./meta-send";
 import { decideFallback, resolveFallbackPolicy } from "./fallback";
-import {
-  formatCollectInputPrompt,
-  isValidCollectInput,
-} from "./input-validation";
+import { formatCollectInputPrompt, isValidCollectInput } from "./input-validation";
 import { addContactTagAndDispatch } from "@/lib/contacts/tag-events";
 import { removeContactTag } from "@/lib/contacts/tag-write";
 import {
@@ -51,10 +48,7 @@ import {
   type TravelDestination,
   type TravelFlowCompletionResult,
 } from "@/lib/crm-bridge";
-import {
-  getFlowVariable,
-  interpolateFlowVariables,
-} from "./flow-vars";
+import { getFlowVariable, interpolateFlowVariables } from "./flow-vars";
 import {
   CRM_DESTINATION_PAGE_SIZE,
   CRM_DESTINATION_RESULT_KEY,
@@ -86,6 +80,7 @@ import {
   type TravelCrmGetDestinationsNodeConfig,
   type TravelCrmEnquiryField,
   type KeywordTriggerConfig,
+  NO_DESTINATION_OPTION_ID,
 } from "./types";
 
 // ============================================================
@@ -122,10 +117,7 @@ export function matchReplyId(
  * Used by the trigger evaluator. Stable enough that the v3 builder
  * UI can preview matches by passing canned strings.
  */
-export function matchesKeywordTrigger(
-  text: string,
-  cfg: KeywordTriggerConfig,
-): boolean {
+export function matchesKeywordTrigger(text: string, cfg: KeywordTriggerConfig): boolean {
   if (!text || !cfg.keywords?.length) return false;
   const matchType = cfg.match_type ?? "contains";
   const haystack = cfg.case_sensitive ? text : text.toLowerCase();
@@ -156,8 +148,8 @@ export function matchesKeywordTrigger(
  */
 export function entryTriggerTexts(message: ParsedInbound): string[] {
   if (message.kind === "text") return [message.text];
-  return [...new Set([message.reply_title, message.reply_id])].filter(
-    (v): v is string => Boolean(v && v.trim()),
+  return [...new Set([message.reply_title, message.reply_id])].filter((v): v is string =>
+    Boolean(v && v.trim()),
   );
 }
 
@@ -256,15 +248,8 @@ async function loadActiveRunForContact(
   return rows[0] ?? null;
 }
 
-async function loadFlow(
-  db: AdminClient,
-  flowId: string,
-): Promise<FlowRow | null> {
-  const { data, error } = await db
-    .from("flows")
-    .select("*")
-    .eq("id", flowId)
-    .maybeSingle();
+async function loadFlow(db: AdminClient, flowId: string): Promise<FlowRow | null> {
+  const { data, error } = await db.from("flows").select("*").eq("id", flowId).maybeSingle();
   if (error) {
     console.error("[flows] loadFlow error:", error.message);
     return null;
@@ -281,14 +266,8 @@ async function loadFlow(
  * cleanly (every subsequent .get() returns undefined → the run
  * fails with node_not_found, same as the old per-node lookup).
  */
-async function loadAllNodes(
-  db: AdminClient,
-  flowId: string,
-): Promise<Map<string, FlowNodeRow>> {
-  const { data, error } = await db
-    .from("flow_nodes")
-    .select("*")
-    .eq("flow_id", flowId);
+async function loadAllNodes(db: AdminClient, flowId: string): Promise<Map<string, FlowNodeRow>> {
+  const { data, error } = await db.from("flow_nodes").select("*").eq("flow_id", flowId);
   if (error) {
     console.error("[flows] loadAllNodes error:", error.message);
     return new Map();
@@ -529,9 +508,7 @@ type DynamicListItem = {
   replyId: string;
 };
 
-function readDynamicListPages(
-  vars: Record<string, unknown>,
-): Record<string, number> {
+function readDynamicListPages(vars: Record<string, unknown>): Record<string, number> {
   const value = vars.__flow_dynamic_list_pages;
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   return Object.fromEntries(
@@ -545,9 +522,7 @@ function getDynamicListItems(
   cfg: SendListNodeConfig,
   vars: Record<string, unknown>,
 ): DynamicListItem[] {
-  const source = cfg.dynamic_source_var
-    ? getFlowVariable(vars, cfg.dynamic_source_var)
-    : undefined;
+  const source = cfg.dynamic_source_var ? getFlowVariable(vars, cfg.dynamic_source_var) : undefined;
   if (!Array.isArray(source)) {
     throw new Error("Dynamic list source is missing or is not an array.");
   }
@@ -584,29 +559,27 @@ function buildDynamicListPage(
   cfg: SendListNodeConfig,
   vars: Record<string, unknown>,
   requestedPage: number,
-): { page: number; rows: Array<{ id: string; title: string; description?: string }> } {
+): {
+  page: number;
+  rows: Array<{ id: string; title: string; description?: string }>;
+} {
   const items = getDynamicListItems(cfg, vars);
-  const lastPage = Math.max(
-    0,
-    Math.ceil(items.length / DYNAMIC_LIST_PAGE_SIZE) - 1,
-  );
+  const lastPage = Math.max(0, Math.ceil(items.length / DYNAMIC_LIST_PAGE_SIZE) - 1);
   const page = Math.min(Math.max(0, Math.floor(requestedPage)), lastPage);
   const start = page * DYNAMIC_LIST_PAGE_SIZE;
-  const rows = items
-    .slice(start, start + DYNAMIC_LIST_PAGE_SIZE)
-    .map(({ source, replyId }) => {
-      const title = getFlowVariable(source, cfg.dynamic_title_field ?? "");
-      const description = cfg.dynamic_description_field
-        ? getFlowVariable(source, cfg.dynamic_description_field)
-        : undefined;
-      return {
-        id: replyId,
-        title: String(title).trim().slice(0, 24),
-        ...(typeof description === "string" && description.trim()
-          ? { description: description.trim().slice(0, 72) }
-          : {}),
-      };
-    });
+  const rows = items.slice(start, start + DYNAMIC_LIST_PAGE_SIZE).map(({ source, replyId }) => {
+    const title = getFlowVariable(source, cfg.dynamic_title_field ?? "");
+    const description = cfg.dynamic_description_field
+      ? getFlowVariable(source, cfg.dynamic_description_field)
+      : undefined;
+    return {
+      id: replyId,
+      title: String(title).trim().slice(0, 24),
+      ...(typeof description === "string" && description.trim()
+        ? { description: description.trim().slice(0, 72) }
+        : {}),
+    };
+  });
   if (page > 0) {
     rows.unshift({
       id: DYNAMIC_LIST_PREVIOUS_ID,
@@ -629,9 +602,7 @@ async function loadCrmDestinationOptions(
 ): Promise<CrmDestinationOption[]> {
   const bridge = getCrmBridgeClient();
   const scopes =
-    scope === "both" || !scope
-      ? (["domestic", "international"] as const)
-      : ([scope] as const);
+    scope === "both" || !scope ? (["domestic", "international"] as const) : ([scope] as const);
   const results = await Promise.all(scopes.map((item) => bridge.getDestinations(item)));
   const options = results
     .flat()
@@ -721,13 +692,7 @@ async function persistCrmDestinationPickerState(
 ): Promise<boolean> {
   const vars = { ...run.vars, [CRM_DESTINATION_STATE_KEY]: state };
   if (nodeKey) {
-    const advanced = await advanceCurrentNodeKey(
-      db,
-      run.id,
-      run.current_node_key,
-      nodeKey,
-      vars,
-    );
+    const advanced = await advanceCurrentNodeKey(db, run.id, run.current_node_key, nodeKey, vars);
     if (advanced) run.current_node_key = nodeKey;
     if (advanced) run.vars = vars;
     return advanced;
@@ -755,12 +720,7 @@ async function sendCrmDestinationPickerAndSuspend(
   }
   const state: CrmDestinationPickerState = { enabled: true, options, page: 0 };
   await sendCrmDestinationPage(db, run, node, state);
-  const advanced = await persistCrmDestinationPickerState(
-    db,
-    run,
-    state,
-    node.node_key,
-  );
+  const advanced = await persistCrmDestinationPickerState(db, run, state, node.node_key);
   if (!advanced) {
     await logEvent(db, run.id, "error", node.node_key, {
       reason: "lost_race_during_crm_destination_suspend",
@@ -809,32 +769,37 @@ async function submitCrmFlowCompletion(
     const value = getFlowVariable(run.vars, path);
     if (value !== undefined && value !== null) answers[field] = value;
   }
+  const noDestinationSelected = answers.destination_id === NO_DESTINATION_OPTION_ID;
+  if (noDestinationSelected) {
+    delete answers.destination_id;
+    delete answers.destination_name;
+    delete answers.assigned_employee_id;
+    delete answers.selected_destination_id;
+    delete answers.selected_destination_name;
+    delete answers.selected_assigned_employee_id;
+  }
   if (!answers.whatsapp_number && contactResult.data.phone) {
     answers.whatsapp_number = contactResult.data.phone;
   }
   if (run.conversation_id) answers.conversation_id = run.conversation_id;
-  const rawDestination =
-    run.vars[CRM_DESTINATION_RESULT_KEY] ??
-    (typeof answers.destination_id === "string"
-      ? {
-          id: answers.destination_id,
-          name:
-            typeof answers.destination_name === "string"
-              ? answers.destination_name
-              : answers.destination_id,
-          scope:
-            answers.travel_type === "international"
-              ? "international"
-              : "domestic",
-          assignment_status: answers.assigned_employee_id
-            ? "assigned"
-            : "unassigned",
-          assigned_employee_id:
-            typeof answers.assigned_employee_id === "string"
-              ? answers.assigned_employee_id
-              : null,
-        }
-      : null);
+  const rawDestination = noDestinationSelected
+    ? null
+    : (run.vars[CRM_DESTINATION_RESULT_KEY] ??
+      (typeof answers.destination_id === "string"
+        ? {
+            id: answers.destination_id,
+            name:
+              typeof answers.destination_name === "string"
+                ? answers.destination_name
+                : answers.destination_id,
+            scope: answers.travel_type === "international" ? "international" : "domestic",
+            assignment_status: answers.assigned_employee_id ? "assigned" : "unassigned",
+            assigned_employee_id:
+              typeof answers.assigned_employee_id === "string"
+                ? answers.assigned_employee_id
+                : null,
+          }
+        : null));
   if (
     rawDestination !== undefined &&
     rawDestination !== null &&
@@ -872,8 +837,7 @@ async function submitCrmFlowCompletion(
   if (!contact.email?.trim() && !contact.phone?.trim()) {
     throw new Error("Travel CRM requires a customer phone number or email address.");
   }
-  const rawTravelDate =
-    typeof answers.travel_date === "string" ? answers.travel_date.trim() : "";
+  const rawTravelDate = typeof answers.travel_date === "string" ? answers.travel_date.trim() : "";
   const rawBudget = typeof answers.budget === "string" ? answers.budget.trim() : "";
   const normalizedDate = normalizeTravelDate(rawTravelDate);
   if (normalizedDate) answers.__wacrm_travel_date_iso = normalizedDate;
@@ -897,8 +861,7 @@ async function submitCrmFlowCompletion(
     handoff_requested: handoffRequested,
     contact: {
       name:
-        typeof answers.customer_name === "string" &&
-        answers.customer_name.trim()
+        typeof answers.customer_name === "string" && answers.customer_name.trim()
           ? answers.customer_name.trim()
           : contact.name,
       email: contact.email,
@@ -921,12 +884,8 @@ function normalizeTravelDate(value: string): string | null {
   let parts: [number, number, number] | null = null;
   const iso = value.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
   const dmy = value.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})$/);
-  const dayMonthName = value.match(
-    /^(\d{1,2})(?:st|nd|rd|th)?[\s,-]+([a-z]+)[\s,-]+(\d{4})$/i,
-  );
-  const monthNameDay = value.match(
-    /^([a-z]+)[\s,-]+(\d{1,2})(?:st|nd|rd|th)?[\s,-]+(\d{4})$/i,
-  );
+  const dayMonthName = value.match(/^(\d{1,2})(?:st|nd|rd|th)?[\s,-]+([a-z]+)[\s,-]+(\d{4})$/i);
+  const monthNameDay = value.match(/^([a-z]+)[\s,-]+(\d{1,2})(?:st|nd|rd|th)?[\s,-]+(\d{4})$/i);
   if (iso) {
     parts = [Number(iso[1]), Number(iso[2]), Number(iso[3])];
   } else if (dmy) {
@@ -936,11 +895,7 @@ function normalizeTravelDate(value: string): string | null {
     const monthText = dayMonthName ? match[2] : match[1];
     const month = monthNumber(monthText);
     if (!month) return null;
-    parts = [
-      Number(match[3]),
-      month,
-      Number(dayMonthName ? match[1] : match[2]),
-    ];
+    parts = [Number(match[3]), month, Number(dayMonthName ? match[1] : match[2])];
   }
   if (!parts) return null;
   const [year, month, day] = parts;
@@ -970,9 +925,7 @@ function monthNumber(value: string): number | null {
     ["november", "nov"],
     ["december", "dec"],
   ];
-  const index = months.findIndex((names) =>
-    names.includes(value.toLowerCase()),
-  );
+  const index = months.findIndex((names) => names.includes(value.toLowerCase()));
   return index < 0 ? null : index + 1;
 }
 
@@ -1013,10 +966,7 @@ async function submitCrmFlowCompletionOrFail(
   }
 }
 
-async function submitCrmFlowSnapshotBestEffort(
-  db: AdminClient,
-  run: FlowRunRow,
-): Promise<void> {
+async function submitCrmFlowSnapshotBestEffort(db: AdminClient, run: FlowRunRow): Promise<void> {
   try {
     await submitCrmFlowCompletion(db, run, true);
   } catch (err) {
@@ -1053,10 +1003,7 @@ async function executeHandoff(
   };
   if (assignee) convUpdate.assigned_agent_id = assignee;
   if (run.conversation_id) {
-    await db
-      .from("conversations")
-      .update(convUpdate)
-      .eq("id", run.conversation_id);
+    await db.from("conversations").update(convUpdate).eq("id", run.conversation_id);
   }
   await logEvent(db, run.id, "handoff", node.node_key, {
     note: cfg.note ?? null,
@@ -1076,8 +1023,7 @@ function resolveFlowHandoffAssignee(run: FlowRunRow): string | undefined {
     destination && typeof destination === "object" && !Array.isArray(destination)
       ? (destination as Record<string, unknown>).assigned_employee_id
       : getFlowVariable(run.vars, "destination.assigned_employee_id");
-  return typeof destinationAssignee === "string" &&
-    destinationAssignee.trim()
+  return typeof destinationAssignee === "string" && destinationAssignee.trim()
     ? destinationAssignee
     : undefined;
 }
@@ -1157,9 +1103,7 @@ function interpolateOptionalVars(
   template: string | undefined,
   vars: Record<string, unknown>,
 ): string | undefined {
-  return template === undefined || template === null
-    ? undefined
-    : interpolateVars(template, vars);
+  return template === undefined || template === null ? undefined : interpolateVars(template, vars);
 }
 
 async function endRun(
@@ -1223,7 +1167,7 @@ async function advanceFromNodeKey(
       try {
         const { whatsapp_message_id } = await engineSendText({
           accountId: run.account_id,
-    userId: run.user_id,
+          userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
           text: interpolateVars(cfg.text, run.vars),
@@ -1258,14 +1202,12 @@ async function advanceFromNodeKey(
       try {
         const { whatsapp_message_id } = await engineSendMedia({
           accountId: run.account_id,
-    userId: run.user_id,
+          userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
           kind: cfg.media_type,
           link: mediaUrl,
-          caption: cfg.caption
-            ? interpolateVars(cfg.caption, run.vars)
-            : undefined,
+          caption: cfg.caption ? interpolateVars(cfg.caption, run.vars) : undefined,
           filename: cfg.filename,
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
@@ -1291,13 +1233,10 @@ async function advanceFromNodeKey(
       try {
         const { whatsapp_message_id } = await engineSendText({
           accountId: run.account_id,
-    userId: run.user_id,
+          userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          text: formatCollectInputPrompt(
-            interpolateVars(cfg.prompt_text, run.vars),
-            cfg,
-          ),
+          text: formatCollectInputPrompt(interpolateVars(cfg.prompt_text, run.vars), cfg),
         });
         await logEvent(db, run.id, "message_sent", node.node_key, {
           node_type: "collect_input",
@@ -1322,12 +1261,7 @@ async function advanceFromNodeKey(
         await endRun(db, run.id, "failed", "collect_input_prompt_failed");
         return { outcome: "completed" };
       }
-      const advanced = await advanceCurrentNodeKey(
-        db,
-        run.id,
-        run.current_node_key,
-        node.node_key,
-      );
+      const advanced = await advanceCurrentNodeKey(db, run.id, run.current_node_key, node.node_key);
       if (!advanced) {
         await logEvent(db, run.id, "error", node.node_key, {
           reason: "lost_race_during_advance",
@@ -1339,9 +1273,7 @@ async function advanceFromNodeKey(
       const cfg = node.config as unknown as ConditionNodeConfig;
       let branch: "true" | "false";
       try {
-        branch = (await evaluateConditionNode(db, run, cfg))
-          ? "true"
-          : "false";
+        branch = (await evaluateConditionNode(db, run, cfg)) ? "true" : "false";
       } catch (err) {
         await logEvent(db, run.id, "error", node.node_key, {
           reason: "condition_evaluation_failed",
@@ -1350,8 +1282,7 @@ async function advanceFromNodeKey(
         await endRun(db, run.id, "failed", "condition_evaluation_failed");
         return { outcome: "completed" };
       }
-      currentKey =
-        branch === "true" ? cfg.true_next : cfg.false_next;
+      currentKey = branch === "true" ? cfg.true_next : cfg.false_next;
       await logEvent(db, run.id, "node_entered", node.node_key, {
         condition_result: branch,
         advancing_to: currentKey,
@@ -1402,26 +1333,31 @@ async function advanceFromNodeKey(
       try {
         let vars = { ...run.vars };
         if (node.node_type === "crm_get_destinations") {
-          const destinations = await getCrmBridgeClient().getDestinations(
-            (cfg as TravelCrmGetDestinationsNodeConfig).travel_type,
-          );
-          if (destinations.length === 0) {
+          const config = cfg as TravelCrmGetDestinationsNodeConfig;
+          const destinations = await getCrmBridgeClient().getDestinations(config.travel_type);
+          if (destinations.length === 0 && !config.include_none_option) {
             throw new Error("No active assigned destinations were returned.");
           }
-          vars = setFlowResult(
-            vars,
-            (cfg as TravelCrmGetDestinationsNodeConfig).result_var,
-            destinations.map((destination) => ({
-              destination_id: destination.id,
-              destination_name: destination.name,
-              travel_type: destination.scope,
-              assigned_employee_id: destination.assigned_employee_id,
-            })),
-          );
+          const options: Record<string, unknown>[] = destinations.map((destination) => ({
+            destination_id: destination.id,
+            destination_name: destination.name,
+            travel_type: destination.scope,
+            assigned_employee_id: destination.assigned_employee_id,
+          }));
+          if (config.include_none_option) {
+            options.unshift({
+              destination_id: NO_DESTINATION_OPTION_ID,
+              destination_name: "None",
+              travel_type: config.travel_type,
+              assigned_employee_id: null,
+            });
+          }
+          vars = setFlowResult(vars, config.result_var, options);
           currentKey = cfg.next_node_key;
           await logEvent(db, run.id, "node_entered", node.node_key, {
             node_type: node.node_type,
             destination_count: destinations.length,
+            none_option_included: config.include_none_option === true,
           });
         } else if (node.node_type === "crm_get_destination") {
           const detailsConfig = cfg as TravelCrmGetDestinationNodeConfig;
@@ -1514,12 +1450,7 @@ async function advanceFromNodeKey(
         return { outcome: "completed" };
       }
       // Persist the new current_node_key via optimistic UPDATE.
-      const advanced = await advanceCurrentNodeKey(
-        db,
-        run.id,
-        run.current_node_key,
-        node.node_key,
-      );
+      const advanced = await advanceCurrentNodeKey(db, run.id, run.current_node_key, node.node_key);
       if (!advanced) {
         await logEvent(db, run.id, "error", node.node_key, {
           reason: "lost_race_during_advance",
@@ -1534,9 +1465,7 @@ async function advanceFromNodeKey(
         const cfg = node.config as unknown as SendListNodeConfig;
         const detail = err instanceof Error ? err.message : String(err);
         await logEvent(db, run.id, "error", node.node_key, {
-          reason: cfg.dynamic_source_var
-            ? "dynamic_send_list_failed"
-            : "send_list_failed",
+          reason: cfg.dynamic_source_var ? "dynamic_send_list_failed" : "send_list_failed",
           detail,
         });
         if (cfg.dynamic_source_var && cfg.dynamic_error_next_node_key) {
@@ -1556,9 +1485,7 @@ async function advanceFromNodeKey(
         run.id,
         run.current_node_key,
         node.node_key,
-        (node.config as unknown as SendListNodeConfig).dynamic_source_var
-          ? run.vars
-          : undefined,
+        (node.config as unknown as SendListNodeConfig).dynamic_source_var ? run.vars : undefined,
       );
       if (!advanced) {
         await logEvent(db, run.id, "error", node.node_key, {
@@ -1686,11 +1613,7 @@ export async function dispatchInboundToFlows(
 ): Promise<DispatchInboundResult> {
   const db = supabaseAdmin();
   try {
-    const activeRun = await loadActiveRunForContact(
-      db,
-      input.accountId,
-      input.contactId,
-    );
+    const activeRun = await loadActiveRunForContact(db, input.accountId, input.contactId);
 
     // Idempotency — only matters if there's already a run for this
     // contact. For new runs, the partial unique index catches duplicate
@@ -1809,21 +1732,18 @@ async function handleReplyForActiveRun(
   //
   // Everything else falls through to the fallback policy below.
   let matched: string | null = null;
-  if (
-    message.kind === "interactive_reply" &&
-    currentNode.node_type === "crm_destination"
-  ) {
+  if (message.kind === "interactive_reply" && currentNode.node_type === "crm_destination") {
     try {
-      const state = parseCrmDestinationPickerState(
-        run.vars[CRM_DESTINATION_STATE_KEY],
-      );
+      const state = parseCrmDestinationPickerState(run.vars[CRM_DESTINATION_STATE_KEY]);
       if (!state) {
         throw new Error("The active Travel CRM destination list state is missing or invalid.");
       }
       const cfg = currentNode.config as unknown as CrmDestinationNodeConfig;
-      if (message.reply_id === "crm-destination:next" || message.reply_id === "crm-destination:previous") {
-        const requestedPage =
-          state.page + (message.reply_id === "crm-destination:next" ? 1 : -1);
+      if (
+        message.reply_id === "crm-destination:next" ||
+        message.reply_id === "crm-destination:previous"
+      ) {
+        const requestedPage = state.page + (message.reply_id === "crm-destination:next" ? 1 : -1);
         state.page = getCrmDestinationPage(state.options, requestedPage).page;
         await sendCrmDestinationPage(db, run, currentNode, state);
         await persistCrmDestinationPickerState(db, run, state);
@@ -1842,24 +1762,21 @@ async function handleReplyForActiveRun(
           ? message.reply_id.slice("crm-destination:".length)
           : Number.NaN,
       );
-      const selected = Number.isInteger(selectedIndex)
-        ? state.options[selectedIndex]
-        : undefined;
-      if (
-        !selected ||
-        Math.floor(selectedIndex / CRM_DESTINATION_PAGE_SIZE) !== state.page
-      ) {
+      const selected = Number.isInteger(selectedIndex) ? state.options[selectedIndex] : undefined;
+      if (!selected || Math.floor(selectedIndex / CRM_DESTINATION_PAGE_SIZE) !== state.page) {
         matched = null;
       } else {
-        const freshDestination = (
-          await getCrmBridgeClient().getDestinations(selected.scope)
-        ).find((destination) => destination.id === selected.id);
+        const freshDestination = (await getCrmBridgeClient().getDestinations(selected.scope)).find(
+          (destination) => destination.id === selected.id,
+        );
         if (!freshDestination) {
           const refreshedOptions = await loadCrmDestinationOptions(
             (currentNode.config as unknown as CrmDestinationNodeConfig).scope,
           );
           if (refreshedOptions.length === 0) {
-            throw new Error("The selected destination is no longer available and no PDF destinations remain.");
+            throw new Error(
+              "The selected destination is no longer available and no PDF destinations remain.",
+            );
           }
           const refreshedState: CrmDestinationPickerState = {
             enabled: true,
@@ -1959,10 +1876,7 @@ async function handleReplyForActiveRun(
       const items = getDynamicListItems(cfg, run.vars);
       const pages = readDynamicListPages(run.vars);
       const page = pages[currentNode.node_key] ?? 0;
-      const lastPage = Math.max(
-        0,
-        Math.ceil(items.length / DYNAMIC_LIST_PAGE_SIZE) - 1,
-      );
+      const lastPage = Math.max(0, Math.ceil(items.length / DYNAMIC_LIST_PAGE_SIZE) - 1);
       if (message.reply_id === DYNAMIC_LIST_NEXT_ID && page < lastPage) {
         pages[currentNode.node_key] = page + 1;
         await persistFlowVars(db, run, {
@@ -1997,9 +1911,7 @@ async function handleReplyForActiveRun(
           outcome: "advanced",
         };
       }
-      const selectedIndex = items.findIndex(
-        ({ replyId }) => replyId === message.reply_id,
-      );
+      const selectedIndex = items.findIndex(({ replyId }) => replyId === message.reply_id);
       if (
         selectedIndex >= page * DYNAMIC_LIST_PAGE_SIZE &&
         selectedIndex < (page + 1) * DYNAMIC_LIST_PAGE_SIZE
@@ -2016,9 +1928,7 @@ async function handleReplyForActiveRun(
             value !== null &&
             !["string", "number", "boolean"].includes(typeof value)
           ) {
-            throw new Error(
-              `Selected item field "${mapping.field}" is not a scalar value.`,
-            );
+            throw new Error(`Selected item field "${mapping.field}" is not a scalar value.`);
           }
           if (value === undefined || value === null) {
             delete nextVars[mapping.var_key];
@@ -2045,14 +1955,10 @@ async function handleReplyForActiveRun(
     }
   } else if (
     message.kind === "interactive_reply" &&
-    (currentNode.node_type === "send_buttons" ||
-      currentNode.node_type === "send_list")
+    (currentNode.node_type === "send_buttons" || currentNode.node_type === "send_list")
   ) {
     matched = matchReplyId(currentNode, message.reply_id);
-  } else if (
-    message.kind === "text" &&
-    currentNode.node_type === "collect_input"
-  ) {
+  } else if (message.kind === "text" && currentNode.node_type === "collect_input") {
     const cfg = currentNode.config as unknown as CollectInputNodeConfig;
     const captured = message.text.trim();
     if (!isValidCollectInput(captured, cfg)) {
@@ -2062,10 +1968,7 @@ async function handleReplyForActiveRun(
           userId: run.user_id,
           conversationId: run.conversation_id!,
           contactId: run.contact_id!,
-          text: formatCollectInputPrompt(
-            interpolateVars(cfg.prompt_text, run.vars),
-            cfg,
-          ),
+          text: formatCollectInputPrompt(interpolateVars(cfg.prompt_text, run.vars), cfg),
         });
         await logEvent(db, run.id, "fallback_fired", currentNode.node_key, {
           action: "reprompt",
@@ -2119,10 +2022,7 @@ async function handleReplyForActiveRun(
     // capture UPDATE into the in-memory `run`; now that we do, the
     // local copy is the source of truth.
     if (run.reprompt_count !== 0) {
-      const { error } = await db
-        .from("flow_runs")
-        .update({ reprompt_count: 0 })
-        .eq("id", run.id);
+      const { error } = await db.from("flow_runs").update({ reprompt_count: 0 }).eq("id", run.id);
       if (!error) run.reprompt_count = 0;
     }
     const outcome = await advanceFromNodeKey(db, run, matched, nodes);
@@ -2134,14 +2034,9 @@ async function handleReplyForActiveRun(
   }
 
   // No match → fallback. Apply the policy.
-  const policy = resolveFallbackPolicy(
-    (await loadFlow(db, run.flow_id))?.fallback_policy,
-  );
+  const policy = resolveFallbackPolicy((await loadFlow(db, run.flow_id))?.fallback_policy);
   const newReprompts = run.reprompt_count + 1;
-  await db
-    .from("flow_runs")
-    .update({ reprompt_count: newReprompts })
-    .eq("id", run.id);
+  await db.from("flow_runs").update({ reprompt_count: newReprompts }).eq("id", run.id);
 
   const action = decideFallback({ policy, reprompt_count: newReprompts });
   await logEvent(db, run.id, "fallback_fired", run.current_node_key, {
@@ -2175,9 +2070,7 @@ async function handleReplyForActiveRun(
           text: interpolateVars(cfg.prompt_text, run.vars),
         });
       } else if (currentNode.node_type === "crm_destination") {
-        const state = parseCrmDestinationPickerState(
-          run.vars[CRM_DESTINATION_STATE_KEY],
-        );
+        const state = parseCrmDestinationPickerState(run.vars[CRM_DESTINATION_STATE_KEY]);
         if (!state) {
           throw new Error("The active Travel CRM destination list state is missing or invalid.");
         }

@@ -1,6 +1,7 @@
 import { createHmac } from "node:crypto";
 import { describe, expect, it } from "bun:test";
 import {
+  normalizeWacrmFlowAnswers,
   verifyWacrmFlowCompletionSignature,
   wacrmFlowCompletionSchema,
 } from "./wacrm-flow-completion.server";
@@ -26,6 +27,47 @@ const timestamp = "1791088200";
 const signature = createHmac("sha256", secret).update(`${timestamp}.${body}`).digest("hex");
 
 describe("WACRM flow completion request", () => {
+  it("normalizes legacy raw date and budget answers before saving", () => {
+    expect(
+      normalizeWacrmFlowAnswers({
+        travel_date: "22-11-2026",
+        budget: "100000",
+        adults: "3",
+      }),
+    ).toEqual({
+      travel_date: "22-11-2026",
+      budget: "100000",
+      adults: "3",
+      __wacrm_travel_date_iso: "2026-11-22",
+      __wacrm_budget_amount: "100000",
+      __wacrm_budget_currency: "INR",
+    });
+  });
+
+  it("preserves explicit currency and rejects invalid values", () => {
+    expect(
+      normalizeWacrmFlowAnswers({
+        travel_date: "31-02-2026",
+        budget: "₹1,00,000",
+      }),
+    ).toEqual({
+      travel_date: "31-02-2026",
+      budget: "₹1,00,000",
+      __wacrm_budget_amount: "100000",
+      __wacrm_budget_currency: "INR",
+    });
+    expect(
+      normalizeWacrmFlowAnswers({
+        travel_date: "2026-11-22",
+        budget: "100000 USD",
+      }),
+    ).toMatchObject({
+      __wacrm_travel_date_iso: "2026-11-22",
+      __wacrm_budget_amount: "100000",
+      __wacrm_budget_currency: "USD",
+    });
+  });
+
   it("accepts a signed, current payload", () => {
     expect(
       verifyWacrmFlowCompletionSignature({

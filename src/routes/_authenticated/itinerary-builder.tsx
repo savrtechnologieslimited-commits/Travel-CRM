@@ -8,6 +8,7 @@ import {
   ArrowUp,
   BedDouble,
   Bold,
+  Check,
   Copy,
   Eye,
   ExternalLink,
@@ -2683,6 +2684,10 @@ function SavedHotelSummary({
                 More Info
               </Button>
               {item.hotel_city && <span className="text-sm text-slate-600">{item.hotel_city}</span>}
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700">
+                <Check className="size-3.5" />
+                Saved
+              </span>
             </div>
             {item.hotel_address && (
               <p className="mt-1 line-clamp-2 text-sm text-slate-700">{item.hotel_address}</p>
@@ -4385,7 +4390,13 @@ function ItineraryBuilderPage() {
   );
   const draftStorageKeyRef = useRef<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [assignedSaveConfirmed, setAssignedSaveConfirmed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => {
+    if (!assignedSaveConfirmed) return;
+    const timer = window.setTimeout(() => setAssignedSaveConfirmed(false), 3000);
+    return () => window.clearTimeout(timer);
+  }, [assignedSaveConfirmed]);
   const [costLines, setCostLines] = useState<ItineraryCostLine[]>([]);
   const [copyMetadata, setCopyMetadata] = useState<ItineraryCopyMetadata>({});
   const [previewTemplate, setPreviewTemplate] =
@@ -8604,6 +8615,7 @@ function ItineraryBuilderPage() {
       return false;
     }
     setSaving(true);
+    setAssignedSaveConfirmed(false);
     setMessage(null);
 
     try {
@@ -8769,6 +8781,7 @@ function ItineraryBuilderPage() {
             Boolean(savedItemKind) ||
             allowMissingDestination ||
             form.provenance === "AI_SUPPLIER_IMPORT",
+          allowMissingScheduledTimes: (formOverride?.status ?? form.status) === "DRAFT",
         },
       );
 
@@ -9059,6 +9072,7 @@ function ItineraryBuilderPage() {
           "",
           itineraryBuilderUrl(window.location.href, savedItineraryId),
         );
+        setAssignedSaveConfirmed(true);
         const savedLabel =
           savedItemKind === "transfer"
             ? "Transfer"
@@ -9242,10 +9256,25 @@ function ItineraryBuilderPage() {
         "",
         itineraryBuilderUrl(window.location.href, savedItineraryId),
       );
-      setMessage(
-        "Itinerary saved with day content, inclusions, exclusions, photos, custom metadata and internal cost lines.",
+      const missingTimeWarnings = validation.warnings.filter(
+        (issue) => issue.code === "MISSING_SCHEDULE_TIME",
       );
+      const savedMessage =
+        "Itinerary saved with day content, inclusions, exclusions, photos, custom metadata and internal cost lines.";
+      setMessage(
+        missingTimeWarnings.length > 0
+          ? `${savedMessage} ${missingTimeWarnings.map((issue) => issue.message).join(" ")}`
+          : savedMessage,
+      );
+      setAssignedSaveConfirmed(true);
       toast.success("Itinerary saved");
+      if (missingTimeWarnings.length > 0) {
+        toast.warning(
+          `Saved as a draft. Add the missing schedule times before marking it READY: ${missingTimeWarnings
+            .map((issue) => issue.message)
+            .join(" ")}`,
+        );
+      }
       if (form.lead_id) {
         void queryClient.invalidateQueries({ queryKey: ["lead-itineraries", form.lead_id] });
       }
@@ -9938,12 +9967,24 @@ function ItineraryBuilderPage() {
           {currentItineraryId && form.customer_id && (
             <Button
               type="button"
-              variant="outline"
+              variant={assignedSaveConfirmed ? "default" : "outline"}
               size="sm"
+              className={
+                assignedSaveConfirmed ? "bg-emerald-600 text-white hover:bg-emerald-700" : undefined
+              }
               disabled={saving || librarySaveInProgress}
               onClick={() => void saveItinerary(false)}
             >
-              {saving ? "Saving…" : "Save to Assigned Itinerary"}
+              {saving ? (
+                "Saving…"
+              ) : assignedSaveConfirmed ? (
+                <>
+                  <Check className="mr-1.5 size-4" />
+                  Saved
+                </>
+              ) : (
+                "Save to Assigned Itinerary"
+              )}
             </Button>
           )}
           <Button
@@ -12240,9 +12281,27 @@ function ItineraryBuilderPage() {
                           type="button"
                           size="sm"
                           disabled={saving}
-                          onClick={() => void saveItinerary(false)}
+                          onClick={() => {
+                            void saveItinerary(
+                              false,
+                              item.title || "Flight",
+                              item.id,
+                              "flight",
+                            ).then((saved) => {
+                              if (saved) setEditingFlightId(null);
+                            });
+                          }}
                         >
-                          {saving ? "Saving…" : "Save Flight"}
+                          {saving ? (
+                            "Saving…"
+                          ) : editingFlightId === (item.id ?? `${dayIndex}-${itemIndex}`) ? (
+                            "Save Flight"
+                          ) : (
+                            <>
+                              <Check className="mr-1.5 size-4" />
+                              Saved
+                            </>
+                          )}
                         </Button>
                       </div>
                     </div>
@@ -15400,7 +15459,28 @@ function ItineraryBuilderPage() {
                             </div>
                             <div className="flex items-center gap-2">
                               <Button type="button" variant="outline" size="sm" onClick={() => updateItem(index, itemIndex, { metadata: { ...(item.metadata ?? {}), flight_saved: false } })}>Edit</Button>
-                              <Button type="button" size="sm" disabled={saving || Boolean(validateFlightTimeOrder(item))} onClick={() => void saveItinerary(false)}>{saving ? "Saving…" : "Save Flight"}</Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={saving || Boolean(validateFlightTimeOrder(item))}
+                                onClick={() =>
+                                  void saveItinerary(
+                                    false,
+                                    item.title || "Flight",
+                                    item.id,
+                                    "flight",
+                                  )
+                                }
+                              >
+                                {saving ? (
+                                  "Saving…"
+                                ) : (
+                                  <>
+                                    <Check className="mr-1.5 size-4" />
+                                    Saved
+                                  </>
+                                )}
+                              </Button>
                             </div>
                           </div>
                         </div>

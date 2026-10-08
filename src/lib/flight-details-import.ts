@@ -87,8 +87,9 @@ const AIRLINE_BY_CODE: Record<string, string> = {
   G9: "Air Arabia",
 };
 
-const TIME_PATTERN =
-  /\b(\d{1,2})(?::([0-5]\d))?\s*([AP]\.?M\.?)\b|\b([01]?\d|2[0-3]):([0-5]\d)\b/gi;
+const TIME_PATTERN = /\b(\d{1,2})(?::([0-5]\d))?\s*([AP]\.?M\.?)|\b([01]?\d|2[0-3]):([0-5]\d)\b/gi;
+const DURATION_PATTERN =
+  /\b\d+\s*(?:hours?\b|hrs?\b|h\b)(?:\s*\d+\s*(?:minutes?\b|mins?\b|m\b))?|\b\d+\s*(?:minutes?\b|mins?\b|m\b)/gi;
 
 type ParseOptions = {
   departureDate?: string;
@@ -131,19 +132,19 @@ function dateCandidates(text: string): string[] {
     const value = validDate(Number(match[1]), Number(match[2]), Number(match[3]));
     if (value) candidates.push({ index: match.index ?? 0, value });
   }
-  for (const match of text.matchAll(/\b([A-Za-z]{3,9})\s+(\d{1,2})(?:,?\s+(20\d{2}))?\b/g)) {
+  for (const match of text.matchAll(/\b([A-Za-z]{3,9})\s+(\d{1,2})(?:,?\s+(20\d{2}|\d{2}))?\b/g)) {
     const month = MONTHS.get((match[1] ?? "").toLowerCase());
     const day = Number(match[2]);
-    const year = Number(match[3]);
+    const year = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : 0;
     if (month && year) {
       const value = validDate(year, month, day);
       if (value) candidates.push({ index: match.index ?? 0, value });
     }
   }
-  for (const match of text.matchAll(/\b(\d{1,2})\s+([A-Za-z]{3,9})(?:,?\s+(20\d{2}))?\b/g)) {
+  for (const match of text.matchAll(/\b(\d{1,2})\s+([A-Za-z]{3,9})(?:,?\s+(20\d{2}|\d{2}))?\b/g)) {
     const day = Number(match[1]);
     const month = MONTHS.get((match[2] ?? "").toLowerCase());
-    const year = Number(match[3]);
+    const year = match[3] ? Number(match[3].length === 2 ? `20${match[3]}` : match[3]) : 0;
     if (month && year) {
       const value = validDate(year, month, day);
       if (value) candidates.push({ index: match.index ?? 0, value });
@@ -248,7 +249,7 @@ function overallRoute(text: string): readonly [string, string] | null {
 
 function flightNumbers(text: string): string[] {
   const numbers = Object.keys(AIRLINE_BY_CODE).flatMap((code) => {
-    const pattern = new RegExp(`${code}\\s*[- ]?\\s*(\\d{1,4}[A-Z]?)\\b`, "gi");
+    const pattern = new RegExp(`${code}[ \\t]*-?[ \\t]*(\\d{1,4}[A-Z]?)\\b`, "gi");
     return [...text.matchAll(pattern)].map((match) => `${code}${match[1]!.toUpperCase()}`);
   });
   return numbers.filter((value, index, all) => all.indexOf(value) === index);
@@ -267,26 +268,38 @@ function airlines(text: string): string[] {
   return [...new Set([...names, ...byCode])];
 }
 
+function normalizeDuration(value: string): string {
+  const hours = Number(value.match(/(\d+)\s*(?:hours?|hrs?|h)\b/i)?.[1] ?? 0);
+  const minutes = Number(value.match(/(\d+)\s*(?:minutes?|mins?|m)\b/i)?.[1] ?? 0);
+  return `${hours ? `${hours}h` : ""}${hours && minutes ? " " : ""}${minutes ? `${minutes}m` : ""}`;
+}
+
 function durationValues(text: string): string[] {
-  const withoutLayoverDurations = text.replace(
-    /\b\d+\s*(?:hours?|hrs?|h|minutes?|mins?|m)\s*layover/gi,
+  const segmentDurations = [
+    ...text.matchAll(new RegExp(`\\bTravel time\\s*:\\s*(${DURATION_PATTERN.source})`, "gi")),
+  ].map((match) => normalizeDuration(match[1]!));
+  if (segmentDurations.length) return segmentDurations;
+
+  const withoutLayovers = text.replace(
+    new RegExp(`(${DURATION_PATTERN.source})\\s*layover[^\\r\\n]*`, "gi"),
     "",
   );
-  return [
-    ...withoutLayoverDurations.matchAll(
-      /\b(\d+)\s*(?:hours?|hrs?|h)(?:\s*(\d+)\s*(?:minutes?|mins?|m))?|\b(\d+)\s*(?:minutes?|mins?|m)\b/gi,
-    ),
-  ].map((match) => {
-    const hours = Number(match[1] ?? 0);
-    const minutes = Number(match[2] ?? match[3] ?? 0);
-    return `${hours ? `${hours}h` : ""}${minutes ? ` ${minutes}m` : ""}`.trim();
-  });
+  return [...withoutLayovers.matchAll(new RegExp(DURATION_PATTERN.source, "gi"))].map((match) =>
+    normalizeDuration(match[0]),
+  );
 }
 
 function stopCount(text: string, segmentCount: number): number | null {
+  if (segmentCount > 1) return segmentCount - 1;
   if (/\bnon[\s-]?stop\b|\bdirect(?: flight)?\b/i.test(text)) return 0;
   const match = text.match(/\b(\d+)\s+stops?\b/i);
-  return match ? Number(match[1]) : segmentCount > 1 ? segmentCount - 1 : null;
+  return match ? Number(match[1]) : null;
+}
+
+function formatMinutes(totalMinutes: number): string {
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  return `${hours ? `${hours}h` : ""}${hours && minutes ? " " : ""}${minutes ? `${minutes}m` : ""}`;
 }
 
 function totalDuration(durations: string[]): string | null {
@@ -296,25 +309,51 @@ function totalDuration(durations: string[]): string | null {
     const minutes = Number(duration.match(/(\d+)m/i)?.[1] ?? 0);
     return total + hours * 60 + minutes;
   }, 0);
-  if (!totalMinutes) return null;
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return `${hours ? `${hours}h` : ""}${hours && minutes ? " " : ""}${minutes ? `${minutes}m` : ""}`;
+  return totalMinutes ? formatMinutes(totalMinutes) : null;
 }
 
 function stopDetails(text: string, count: number | null, codes: string[]): string | null {
   if (count === null) return null;
   if (count === 0) return "Non-stop";
   const intermediateCodes = codes.slice(1, -1);
-  const via = intermediateCodes.length ? ` via ${intermediateCodes.join(", ")}` : "";
   const layovers = [
-    ...text.matchAll(/\b(\d+\s*(?:hours?|hrs?|h|minutes?|mins?|m))\s*layover([^\r\n]*)/gi),
+    ...text.matchAll(new RegExp(`(${DURATION_PATTERN.source})\\s*layover([^\\r\\n]*)`, "gi")),
   ].map((match) => {
     const duration = match[1]!.replace(/\s+/g, " ").trim();
-    const location = (match[2] ?? "").trim();
-    return location ? `${duration} layover at ${location}` : `${duration} layover`;
+    const location = (match[2] ?? "").trim().replace(/^[,·\s]+|[,·\s]+$/g, "");
+    return { duration, location };
   });
-  return [`${count} ${count === 1 ? "stop" : "stops"}${via}`, ...layovers].join(" · ");
+  const stopLocations = layovers
+    .map(({ location }) => location)
+    .filter(Boolean)
+    .filter((location, index, all) => all.indexOf(location) === index);
+  const viaLabels = [...text.matchAll(/\bvia\s+([^\r\n,·]+)/gi)]
+    .map((match) => (match[1] ?? "").trim())
+    .filter(Boolean);
+  const viaLocations = stopLocations.length
+    ? stopLocations
+    : viaLabels.length
+      ? viaLabels
+      : intermediateCodes;
+  const via = viaLocations.length ? ` via ${viaLocations.join(", ")}` : "";
+  const inferredLayovers: number[] = [];
+  const times = parseTimes(text);
+  const toMinutes = (time: string) => {
+    const [hours, minutes] = time.split(":").map(Number);
+    return hours! * 60 + minutes!;
+  };
+  if (!layovers.length && times.length >= (count + 1) * 2) {
+    for (let index = 0; index < count; index += 1) {
+      const arrival = times[index * 2 + 1]!;
+      const nextDeparture = times[index * 2 + 2]!;
+      const duration = (toMinutes(nextDeparture) - toMinutes(arrival) + 1440) % 1440;
+      if (duration > 0) inferredLayovers.push(duration);
+    }
+  }
+  const layoverDetails = layovers.length
+    ? layovers.map(({ duration }) => `${duration} layover`)
+    : inferredLayovers.map((duration) => `${formatMinutes(duration)} layover`);
+  return [`${count} ${count === 1 ? "stop" : "stops"}${via}`, ...layoverDetails].join(" · ");
 }
 
 function baggageInformation(text: string): string | null {

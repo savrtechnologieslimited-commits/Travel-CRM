@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -311,11 +310,6 @@ export function FlightDetailsImportDialog({
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
           <DialogHeader>
             <DialogTitle>Import selected flight</DialogTitle>
-            <DialogDescription>
-              Paste copied flight details or a screenshot from your clipboard. Screenshot OCR and
-              field extraction run in your browser; the image and text are not sent to an AI
-              service. No paid flight-search or AI API is used.
-            </DialogDescription>
           </DialogHeader>
 
           {!draft ? (

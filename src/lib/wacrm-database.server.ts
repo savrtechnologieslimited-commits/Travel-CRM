@@ -1,6 +1,15 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 let client: SupabaseClient | null = null;
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function getWacrmAccountId(): string {
+  const accountId = process.env["WACRM_ACCOUNT_ID"]?.trim();
+  if (!accountId || !uuidPattern.test(accountId)) {
+    throw new Error("WACRM_ACCOUNT_ID must be set to the UUID of the linked WACRM workspace.");
+  }
+  return accountId;
+}
 
 export function getWacrmDatabaseAdminClient(): SupabaseClient {
   if (client) return client;

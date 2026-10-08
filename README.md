@@ -1636,10 +1636,11 @@ from WACRM's Supabase database (`contacts`, `conversations`, and `messages`).
 In the CRM deployment's server-only environment, set `WACRM_SUPABASE_URL` to
 WACRM's `NEXT_PUBLIC_WHATSAPP_SUPABASE_URL` and
 `WACRM_SUPABASE_SERVICE_ROLE_KEY` to WACRM's `WHATSAPP_SUPABASE_SERVICE_ROLE_KEY`.
-The service-role key must remain private (do not use a `VITE_` prefix); add both
-values to the CRM's local `.env.local` and production hosting environment.
-The dialog maps the verified CRM user's email to a WACRM profile, then scopes
-all contact and conversation lookups to that profile's WACRM account.
+Set `WACRM_ACCOUNT_ID` to the UUID of the WACRM workspace linked to this CRM
+company. The server uses this explicit workspace mapping, so CRM staff do not
+need separate WACRM invitations. All contact and conversation queries remain
+scoped to that account ID. Keep all three values server-only; never add a `VITE_`
+prefix to the database credentials or account ID.
 
 Customer greetings are sent by the WACRM account linked to the CRM. Apply
 `20261004140000_customer_whatsapp_greeting_opt_in.sql` to the CRM Supabase

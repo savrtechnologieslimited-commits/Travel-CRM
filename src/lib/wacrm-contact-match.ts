@@ -327,7 +327,7 @@ export const loadWacrmConversationFn = createServerFn({ method: "POST" })
       data: { user },
       error: authError,
     } = await context.supabase.auth.getUser(accessToken);
-    if (authError || !user?.email || !user.email_confirmed_at) {
+    if (authError || !user?.email_confirmed_at) {
       throw new Error("A verified CRM sign-in is required to load WACRM conversations.");
     }
 
@@ -367,27 +367,17 @@ export const loadWacrmConversationFn = createServerFn({ method: "POST" })
       );
     }
 
-    const { getWacrmDatabaseAdminClient } = await import("./wacrm-database.server");
+    const { getWacrmAccountId, getWacrmDatabaseAdminClient } =
+      await import("./wacrm-database.server");
     const wacrm = getWacrmDatabaseAdminClient();
-    const { data: profile, error: profileError } = await wacrm
-      .from("profiles")
-      .select("user_id,account_id")
-      .eq("email", user.email.trim().toLowerCase())
-      .maybeSingle();
-    if (profileError) {
-      console.error("[loadWacrmConversationFn] WACRM profile lookup failed:", profileError);
-      throw new Error("Could not find this CRM account in WACRM.");
-    }
-    if (!profile?.account_id) {
-      throw new Error("This email is not linked to a WACRM account. Sign in to WACRM once first.");
-    }
+    const wacrmAccountId = getWacrmAccountId();
 
     let emailContacts: Array<{ id: string; name: string | null; phone: string }> = [];
     if (normalizedEmail) {
       const { data, error } = await wacrm
         .from("contacts")
         .select("id,name,phone")
-        .eq("account_id", profile.account_id)
+        .eq("account_id", wacrmAccountId)
         .eq("email_normalized", normalizedEmail);
       if (error) {
         console.error("[loadWacrmConversationFn] WACRM email contact lookup failed:", error);
@@ -401,7 +391,7 @@ export const loadWacrmConversationFn = createServerFn({ method: "POST" })
       const { data, error } = await wacrm
         .from("contacts")
         .select("id,name,phone")
-        .eq("account_id", profile.account_id)
+        .eq("account_id", wacrmAccountId)
         .in("phone_normalized", phones);
       if (error) {
         console.error("[loadWacrmConversationFn] WACRM phone contact lookup failed:", error);
@@ -418,7 +408,7 @@ export const loadWacrmConversationFn = createServerFn({ method: "POST" })
       ? await wacrm
           .from("conversations")
           .select("id,contact_id,status,last_message_at")
-          .eq("account_id", profile.account_id)
+          .eq("account_id", wacrmAccountId)
           .in("contact_id", contactIds)
           .order("last_message_at", { ascending: false, nullsFirst: false })
       : { data: [], error: null };

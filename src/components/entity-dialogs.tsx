@@ -510,7 +510,11 @@ export function NewEnquiryDialog({ record, trigger }: EntityDialogProps = {}) {
             </Select>
           </Field>
           <Field label="Assigned to">
-            <AssigneeSelect value={assignedTo} onChange={setAssignedTo} disabled={!canAssign} />
+            <AssigneeSelect
+              value={assignedTo}
+              onChange={setAssignedTo}
+              disabled={!canAssign}
+            />
           </Field>
           <div className="sm:col-span-2">
             <Field label="Client requirement">

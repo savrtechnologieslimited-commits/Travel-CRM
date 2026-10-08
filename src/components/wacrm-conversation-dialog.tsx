@@ -296,3 +296,108 @@ export function WacrmConversationDialog({
     </Dialog>
   );
 }
+
+export function WacrmConversationPanel({
+  recordType,
+  recordId,
+}: {
+  recordType: "lead" | "customer";
+  recordId: string;
+}) {
+  const loadWacrmConversation = useServerFn(loadWacrmConversationFn);
+  const loadConversation = useMutation({
+    retry: false,
+    mutationFn: async (): Promise<WacrmConversationResult> =>
+      loadWacrmConversation({ data: { recordType, recordId } }),
+  });
+  const { mutate: load } = loadConversation;
+  const [selectedContactId, setSelectedContactId] = useState<string | null>(null);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const result = loadConversation.data;
+  const contactsWithChats =
+    result?.candidates.filter((contact) => contact.conversations.length > 0) ?? [];
+  const selectedContact =
+    contactsWithChats.find((contact) => contact.id === selectedContactId) ??
+    (contactsWithChats.length === 1 ? contactsWithChats[0] : null);
+  const selectedConversation = selectedContact?.conversations[0];
+
+  return (
+    <section className="lg:col-span-3 flex h-[min(70vh,720px)] min-h-[420px] flex-col overflow-hidden rounded-lg border bg-white">
+      <header className="shrink-0 border-b px-5 py-3">
+        <h2 className="font-semibold text-slate-900">WhatsApp conversation</h2>
+        <p className="text-sm text-slate-600">
+          Conversation history is loaded from the signed-in WACRM account.
+        </p>
+      </header>
+      {loadConversation.isPending ? (
+        <div className="grid min-h-0 flex-1 place-items-center">
+          <div className="flex items-center gap-3 text-sm text-slate-600" role="status">
+            <LoaderCircle className="size-5 animate-spin text-emerald-700" />
+            Loading matched chat…
+          </div>
+        </div>
+      ) : loadConversation.isError ? (
+        <div className="grid min-h-0 flex-1 place-items-center p-6 text-center">
+          <div className="max-w-md space-y-3">
+            <p className="font-semibold text-slate-900">Could not load the WACRM conversation</p>
+            <p className="text-sm text-slate-600">
+              {loadConversation.error instanceof Error
+                ? loadConversation.error.message
+                : "Check the WACRM session and allowed CRM origin, then try again."}
+            </p>
+            <Button type="button" onClick={() => load()}>
+              Retry
+            </Button>
+          </div>
+        </div>
+      ) : result && contactsWithChats.length === 0 ? (
+        <div className="grid min-h-0 flex-1 place-items-center p-6 text-center">
+          <div className="max-w-md space-y-2">
+            <MessageCircle className="mx-auto size-8 text-slate-400" />
+            <p className="font-semibold text-slate-900">No matching conversation found</p>
+            <p className="text-sm text-slate-600">
+              No WACRM chat matches this record’s phone number. No other person’s chat was opened.
+            </p>
+          </div>
+        </div>
+      ) : result && contactsWithChats.length > 1 && !selectedContact ? (
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+          <p className="text-sm text-slate-600">
+            More than one WACRM contact matches this phone. Select the correct conversation.
+          </p>
+          {contactsWithChats.map((contact) => (
+            <button
+              key={contact.id}
+              type="button"
+              onClick={() => setSelectedContactId(contact.id)}
+              className="flex w-full items-center justify-between gap-3 rounded-lg border bg-white p-4 text-left hover:bg-slate-50"
+            >
+              <span>
+                <span className="block font-medium text-slate-900">
+                  {contact.name?.trim() || contact.phone}
+                </span>
+                <span className="mt-1 block text-sm text-slate-600">{contact.phone}</span>
+              </span>
+              <span className="text-sm font-medium text-emerald-800">Open chat</span>
+            </button>
+          ))}
+        </div>
+      ) : selectedContact && selectedConversation && result ? (
+        <ConversationTranscript
+          contact={selectedContact}
+          conversationId={selectedConversation.id}
+          messages={result.messages}
+          historyMayBeLimited={result.historyMayBeLimitedConversationIds.includes(
+            selectedConversation.id,
+          )}
+        />
+      ) : (
+        <div className="min-h-0 flex-1" />
+      )}
+    </section>
+  );
+}

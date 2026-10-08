@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { getBusinessVisibleProfiles } from "./business-visible-users.data";
+import { hasFullLeadVisibility } from "./lead-ownership";
 
 /** Shared react-query helpers over the Cloud database (RLS scoped to signed-in staff). */
 
@@ -42,6 +43,16 @@ export function useLeads(filters?: {
   return useQuery({
     queryKey: ["leads", filters],
     queryFn: async () => {
+      const { data: authData, error: authError } = await supabase.auth.getUser();
+      if (authError) throw authError;
+      if (!authData.user) throw new Error("Could not identify the signed-in user.");
+
+      const { data: roles, error: roleError } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", authData.user.id);
+      if (roleError) throw roleError;
+
       let q = supabase
         .from("leads")
         .select(
@@ -49,6 +60,9 @@ export function useLeads(filters?: {
         )
         .is("deleted_at", null)
         .order("lead_date", { ascending: true });
+      if (!hasFullLeadVisibility((roles ?? []).map(({ role }) => String(role)))) {
+        q = q.eq("assigned_to", authData.user.id);
+      }
       if (filters?.status && filters.status !== "all") q = q.eq("status", filters.status as never);
       if (filters?.scope && filters.scope !== "all") q = q.eq("scope", filters.scope as never);
       if (filters?.source && filters.source !== "all") q = q.eq("source", filters.source);

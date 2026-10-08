@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useProfiles } from "@/lib/data";
 import { useCurrentUser } from "@/lib/ops-data";
+import { hasFullLeadVisibility } from "@/lib/lead-ownership";
 import {
   Select,
   SelectContent,
@@ -30,13 +31,11 @@ export function useMyRoles() {
   });
 }
 
-/** Only staff roles may change ownership; read-only users just see the name. */
+/** Only administrators and managers may change record ownership. */
 export function useCanAssign() {
   const { data: roles = [], isLoading } = useMyRoles();
   return {
-    // Read-only staff never reassign work; everyone else is additionally
-    // checked by the database policies on write.
-    canAssign: !roles.includes("read_only"),
+    canAssign: hasFullLeadVisibility(roles),
     isLoading,
   };
 }

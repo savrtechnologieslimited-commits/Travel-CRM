@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, MessageSquareText } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import {
   useCommunications,
   useLead,
@@ -20,7 +20,7 @@ import { PageHeader } from "@/components/app-shell";
 import { PriorityBadge, StatusBadge } from "@/components/status-badge";
 import { LeadConvertActions } from "@/components/convert-actions";
 import { AssigneeSelect, useAssigneeNames, useCanAssign } from "@/components/assignee-select";
-import { WacrmContactMatchLink } from "@/components/wacrm-contact-match-link";
+import { WacrmConversationPanel } from "@/components/wacrm-conversation-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
@@ -119,16 +119,6 @@ function LeadDetailPage() {
         subtitle={`${lead.code ?? "Lead"} · created ${formatDate(lead.lead_date)}`}
         actions={
           <div className="flex items-center gap-2">
-            <WacrmContactMatchLink
-              recordType="lead"
-              recordId={lead.id}
-              trigger={
-                <>
-                  <MessageSquareText className="size-4" />
-                  WhatsApp Chat
-                </>
-              }
-            />
             <LeadConvertActions leadId={leadId} hasCustomer={Boolean(lead.customer_id)} />
             <PriorityBadge priority={lead.priority} />
             <AssigneeSelect
@@ -156,10 +146,6 @@ function LeadDetailPage() {
         }
       />
 
-      <div className="mb-4">
-        <WacrmContactMatchLink recordType="lead" recordId={lead.id} />
-      </div>
-
       <Tabs value={tab} onValueChange={setTab} className="mb-6">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
@@ -172,6 +158,8 @@ function LeadDetailPage() {
       </Tabs>
 
       <div className="grid gap-6 lg:grid-cols-3">
+        {tab === "whatsapp" && <WacrmConversationPanel recordType="lead" recordId={lead.id} />}
+
         {tab === "overview" && (
           <>
             <Card className="lg:col-span-2">
@@ -257,21 +245,6 @@ function LeadDetailPage() {
               </CardContent>
             </Card>
           </>
-        )}
-
-        {tab === "whatsapp" && (
-          <div className="lg:col-span-3">
-            <WacrmContactMatchLink
-              recordType="lead"
-              recordId={lead.id}
-              trigger={
-                <>
-                  <MessageSquareText className="size-4" />
-                  Open WhatsApp conversation
-                </>
-              }
-            />
-          </div>
         )}
 
         {tab === "requirements" && (

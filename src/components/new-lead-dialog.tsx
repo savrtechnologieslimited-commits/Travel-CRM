@@ -446,7 +446,11 @@ export function NewLeadDialog({
           </div>
           <div className="space-y-2">
             <Label>Assigned to</Label>
-            <AssigneeSelect value={assignedTo} onChange={setAssignedTo} disabled={!canAssign} />
+            <AssigneeSelect
+              value={assignedTo}
+              onChange={setAssignedTo}
+              disabled={!canAssign}
+            />
           </div>
           <DialogFooter className="sm:col-span-2">
             <Button type="submit" disabled={upsert.isPending}>

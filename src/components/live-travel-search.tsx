@@ -1,8 +1,7 @@
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ExternalLink, Plus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -14,27 +13,40 @@ import type { LiveFlightOffer } from "@/lib/travel-search-types";
 const CABINS = ["Economy", "Premium Economy", "Business", "First"] as const;
 const CURRENCIES = ["INR", "USD", "AED"] as const;
 
-type FlightCaptureForm = {
-  airline: string;
-  flight_number: string;
-  from: string;
-  to: string;
-  departure_date: string;
-  departure_time: string;
-  arrival_date: string;
-  arrival_time: string;
-  duration: string;
-  stops: string;
-  price: string;
-  currency: string;
-  cabin: string;
-  return_airline: string;
-  return_flight_number: string;
-  return_departure_date: string;
-  return_departure_time: string;
-  return_arrival_date: string;
-  return_arrival_time: string;
-};
+function isLiveFlightOffer(value: unknown): value is LiveFlightOffer {
+  if (!value || typeof value !== "object") return false;
+  const offer = value as Record<string, unknown>;
+  const validDateTime = (candidate: unknown) => {
+    if (typeof candidate !== "string" || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(candidate)) return false;
+    const parsed = new Date(`${candidate}:00Z`);
+    return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 16) === candidate;
+  };
+  const hasReturn = ["return_from", "return_to", "return_departure_at", "return_arrival_at"]
+    .some((field) => offer[field] !== undefined);
+  return typeof offer["id"] === "string"
+    && typeof offer["airline"] === "string" && Boolean(offer["airline"].trim())
+    && typeof offer["flight_number"] === "string"
+    && typeof offer["from"] === "string" && /^[A-Z]{3}$/.test(offer["from"])
+    && typeof offer["to"] === "string" && /^[A-Z]{3}$/.test(offer["to"])
+    && offer["from"] !== offer["to"]
+    && validDateTime(offer["departure_at"])
+    && validDateTime(offer["arrival_at"])
+    && typeof offer["duration"] === "string"
+    && typeof offer["stops"] === "number" && Number.isInteger(offer["stops"]) && offer["stops"] >= 0
+    && typeof offer["price"] === "number" && Number.isFinite(offer["price"]) && offer["price"] >= 0
+    && typeof offer["currency"] === "string" && /^[A-Z]{3}$/.test(offer["currency"])
+    && (!hasReturn || (
+      typeof offer["return_from"] === "string" && /^[A-Z]{3}$/.test(offer["return_from"])
+      && typeof offer["return_to"] === "string" && /^[A-Z]{3}$/.test(offer["return_to"])
+      && offer["return_from"] === offer["to"]
+      && offer["return_to"] === offer["from"]
+      && validDateTime(offer["return_departure_at"])
+      && validDateTime(offer["return_arrival_at"])
+      && (offer["return_airline"] === undefined || typeof offer["return_airline"] === "string")
+      && (offer["return_flight_number"] === undefined || typeof offer["return_flight_number"] === "string")
+    ))
+    && (offer["cabin"] === undefined || typeof offer["cabin"] === "string");
+}
 
 function TrainStationPicker({
   id,
@@ -137,29 +149,7 @@ export function LiveTravelSearch({
   const [cabin, setCabin] = useState<(typeof CABINS)[number]>("Economy");
   const [trainClass, setTrainClass] = useState("Sleeper Class");
   const [directFlightOnly, setDirectFlightOnly] = useState(false);
-  const [captureOpen, setCaptureOpen] = useState(false);
-  const [captureError, setCaptureError] = useState("");
-  const [captureForm, setCaptureForm] = useState<FlightCaptureForm>({
-    airline: "",
-    flight_number: "",
-    from: "",
-    to: "",
-    departure_date: "",
-    departure_time: "",
-    arrival_date: "",
-    arrival_time: "",
-    duration: "",
-    stops: "0",
-    price: "",
-    currency: "INR",
-    cabin: "Economy",
-    return_airline: "",
-    return_flight_number: "",
-    return_departure_date: "",
-    return_departure_time: "",
-    return_arrival_date: "",
-    return_arrival_time: "",
-  });
+  const [importStatus, setImportStatus] = useState("");
 
   const flightLinkParams = useMemo(() => ({
     from: from.trim(),
@@ -193,83 +183,46 @@ export function LiveTravelSearch({
     && returnDate
     && returnDate < departure;
 
-  function openFlightCapture() {
-    setCaptureError("");
-    setCaptureForm({
-      airline: "",
-      flight_number: "",
-      from: from.trim().toUpperCase(),
-      to: to.trim().toUpperCase(),
-      departure_date: departure,
-      departure_time: "",
-      arrival_date: departure,
-      arrival_time: "",
-      duration: "",
-      stops: "0",
-      price: "",
-      currency,
-      cabin,
-      return_airline: "",
-      return_flight_number: "",
-      return_departure_date: tripType === "round-trip" ? returnDate : "",
-      return_departure_time: "",
-      return_arrival_date: tripType === "round-trip" ? returnDate : "",
-      return_arrival_time: "",
-    });
-    setCaptureOpen(true);
-  }
+  useEffect(() => {
+    const handleFlightImport = (event: MessageEvent<unknown>) => {
+      if (event.source !== window || event.origin !== window.location.origin) return;
+      if (!event.data || typeof event.data !== "object") return;
+      const message = event.data as { source?: unknown; requestId?: unknown; offer?: unknown };
+      if (message.source !== "savr-flight-import-extension" || typeof message.requestId !== "string") return;
 
-  function updateCaptureField(field: keyof FlightCaptureForm, value: string) {
-    setCaptureForm((current) => ({ ...current, [field]: value }));
-  }
+      const offer = message.offer;
+      if (!isLiveFlightOffer(offer)) {
+        setImportStatus("The browser helper returned incomplete flight details. Try importing again.");
+        window.postMessage({
+          source: "savr-flight-import-page",
+          requestId: message.requestId,
+          ok: false,
+          error: "The imported flight details did not pass validation.",
+        }, window.location.origin);
+        return;
+      }
+      if (!onAddFlight) {
+        setImportStatus("Flight import is unavailable on this itinerary screen.");
+        window.postMessage({
+          source: "savr-flight-import-page",
+          requestId: message.requestId,
+          ok: false,
+          error: "Flight import is unavailable on this itinerary screen.",
+        }, window.location.origin);
+        return;
+      }
 
-  function saveCapturedFlight(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const price = Number(captureForm.price);
-    const stops = Number(captureForm.stops);
-    if (!/^[A-Z]{3}$/.test(captureForm.from) || !/^[A-Z]{3}$/.test(captureForm.to) || captureForm.from === captureForm.to) {
-      setCaptureError("Enter different three-letter IATA airport codes for origin and destination.");
-      return;
-    }
-    if (!captureForm.airline.trim()) {
-      setCaptureError("Enter the airline name shown for the selected flight.");
-      return;
-    }
-    if (!Number.isFinite(price) || price < 0 || !Number.isInteger(stops) || stops < 0) {
-      setCaptureError("Enter a valid non-negative fare and whole number of stops.");
-      return;
-    }
-    const hasReturn = tripType === "round-trip";
-    if (hasReturn && (!captureForm.return_departure_date || !captureForm.return_departure_time
-      || !captureForm.return_arrival_date || !captureForm.return_arrival_time)) {
-      setCaptureError("Enter the return flight's departure and arrival date/time.");
-      return;
-    }
-
-    onAddFlight?.({
-      id: `google-flights-manual-${Date.now()}`,
-      airline: captureForm.airline.trim(),
-      flight_number: captureForm.flight_number.trim(),
-      from: captureForm.from,
-      to: captureForm.to,
-      departure_at: `${captureForm.departure_date}T${captureForm.departure_time}`,
-      arrival_at: `${captureForm.arrival_date}T${captureForm.arrival_time}`,
-      duration: captureForm.duration.trim(),
-      stops,
-      price,
-      currency: captureForm.currency,
-      cabin: captureForm.cabin,
-      ...(hasReturn ? {
-        return_from: captureForm.to,
-        return_to: captureForm.from,
-        return_departure_at: `${captureForm.return_departure_date}T${captureForm.return_departure_time}`,
-        return_arrival_at: `${captureForm.return_arrival_date}T${captureForm.return_arrival_time}`,
-        return_airline: captureForm.return_airline.trim() || captureForm.airline.trim(),
-        return_flight_number: captureForm.return_flight_number.trim(),
-      } : {}),
-    });
-    setCaptureOpen(false);
-  }
+      onAddFlight(offer);
+      setImportStatus(`${offer.airline} ${offer.flight_number} imported. Check Saved Flights; verify price and availability before booking.`);
+      window.postMessage({
+        source: "savr-flight-import-page",
+        requestId: message.requestId,
+        ok: true,
+      }, window.location.origin);
+    };
+    window.addEventListener("message", handleFlightImport);
+    return () => window.removeEventListener("message", handleFlightImport);
+  }, [onAddFlight]);
 
   const providerButtons = mode === "flight"
     ? flightSearchProviders.map((provider) => ({
@@ -455,132 +408,22 @@ export function LiveTravelSearch({
             {mode === "flight" ? "Search on " : "Open in "}{provider.name}
           </Button>
         ))}
-        {mode === "flight" && onAddFlight && (
-          <Button type="button" variant="default" size="sm" disabled={isDisabled} onClick={openFlightCapture}>
-            <Plus className="mr-2 size-4" />
-            Add selected flight to itinerary
-          </Button>
-        )}
       </div>
 
       {mode === "flight" ? (
-        <p className="text-[11px] text-slate-500">Google Flights opens a free search in a new tab with this trip prefilled. Choose a flight there, return here, and enter its details to save it. The CRM does not book or issue tickets.</p>
+        <div className="space-y-2 rounded-md border border-sky-200 bg-white p-3 text-xs text-slate-700">
+          <p className="font-medium text-slate-900">Import a selected flight without retyping it</p>
+          <ol className="list-inside list-decimal space-y-1">
+            <li>Open Google Flights and select your flight (and return flight, if needed).</li>
+            <li>On Google’s itinerary summary, open the <strong>SAVR Flight Import</strong> browser add-on.</li>
+            <li>Review the captured fare and choose <strong>Import to itinerary</strong>.</li>
+          </ol>
+          <p>Keep this itinerary builder open while importing. Google controls live prices; verify the fare before booking. The CRM does not book tickets.</p>
+          {importStatus && <p className="font-medium text-sky-800" role="status" aria-live="polite">{importStatus}</p>}
+        </div>
       ) : (
         <p className="text-[11px] text-slate-500">Opens the selected provider with your search details pre-filled.</p>
       )}
-
-      <Dialog open={captureOpen} onOpenChange={(open) => {
-        setCaptureOpen(open);
-        if (!open) setCaptureError("");
-      }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Capture selected flight</DialogTitle>
-            <DialogDescription>
-              Copy the flight details you selected on Google Flights. The fare is saved for your itinerary only; confirm price and availability before booking.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={saveCapturedFlight} className="grid gap-3 sm:grid-cols-2">
-            <div className="sm:col-span-2">
-              <h3 className="border-b pb-2 text-sm font-semibold">Outbound flight</h3>
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="capture-flight-airline">Airline</Label>
-              <Input id="capture-flight-airline" required value={captureForm.airline} onChange={(event) => updateCaptureField("airline", event.target.value)} placeholder="Air India" />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="capture-flight-number">Flight number</Label>
-              <Input id="capture-flight-number" value={captureForm.flight_number} onChange={(event) => updateCaptureField("flight_number", event.target.value)} placeholder="AI 101" />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="capture-flight-from">Origin (IATA)</Label>
-              <Input id="capture-flight-from" required maxLength={3} value={captureForm.from} onChange={(event) => updateCaptureField("from", event.target.value.toUpperCase())} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="capture-flight-to">Destination (IATA)</Label>
-              <Input id="capture-flight-to" required maxLength={3} value={captureForm.to} onChange={(event) => updateCaptureField("to", event.target.value.toUpperCase())} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="capture-flight-departure-date">Departure date</Label>
-              <Input id="capture-flight-departure-date" required type="date" value={captureForm.departure_date} onChange={(event) => updateCaptureField("departure_date", event.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="capture-flight-departure-time">Departure time</Label>
-              <Input id="capture-flight-departure-time" required type="time" value={captureForm.departure_time} onChange={(event) => updateCaptureField("departure_time", event.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="capture-flight-arrival-date">Arrival date</Label>
-              <Input id="capture-flight-arrival-date" required type="date" value={captureForm.arrival_date} onChange={(event) => updateCaptureField("arrival_date", event.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="capture-flight-arrival-time">Arrival time</Label>
-              <Input id="capture-flight-arrival-time" required type="time" value={captureForm.arrival_time} onChange={(event) => updateCaptureField("arrival_time", event.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="capture-flight-duration">Duration</Label>
-              <Input id="capture-flight-duration" value={captureForm.duration} onChange={(event) => updateCaptureField("duration", event.target.value)} placeholder="e.g. 2h 15m" />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="capture-flight-stops">Stops</Label>
-              <Input id="capture-flight-stops" required type="number" min="0" step="1" value={captureForm.stops} onChange={(event) => updateCaptureField("stops", event.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="capture-flight-price">{tripType === "round-trip" ? "Round-trip total fare" : "Fare"}</Label>
-              <Input id="capture-flight-price" required type="number" min="0" step="0.01" value={captureForm.price} onChange={(event) => updateCaptureField("price", event.target.value)} />
-            </div>
-            <div className="space-y-1">
-              <Label>Currency</Label>
-              <Select value={captureForm.currency} onValueChange={(value) => updateCaptureField("currency", value)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{CURRENCIES.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label>Cabin class</Label>
-              <Select value={captureForm.cabin} onValueChange={(value) => updateCaptureField("cabin", value)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{CABINS.map((value) => <SelectItem key={value} value={value}>{value}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            {tripType === "round-trip" && (
-              <>
-                <div className="sm:col-span-2">
-                  <h3 className="border-t pt-3 text-sm font-semibold">Return flight</h3>
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="capture-return-airline">Return airline</Label>
-                  <Input id="capture-return-airline" value={captureForm.return_airline} onChange={(event) => updateCaptureField("return_airline", event.target.value)} placeholder={captureForm.airline || "Same airline"} />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="capture-return-flight-number">Return flight number</Label>
-                  <Input id="capture-return-flight-number" value={captureForm.return_flight_number} onChange={(event) => updateCaptureField("return_flight_number", event.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="capture-return-departure-date">Return departure date</Label>
-                  <Input id="capture-return-departure-date" required type="date" value={captureForm.return_departure_date} onChange={(event) => updateCaptureField("return_departure_date", event.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="capture-return-departure-time">Return departure time</Label>
-                  <Input id="capture-return-departure-time" required type="time" value={captureForm.return_departure_time} onChange={(event) => updateCaptureField("return_departure_time", event.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="capture-return-arrival-date">Return arrival date</Label>
-                  <Input id="capture-return-arrival-date" required type="date" value={captureForm.return_arrival_date} onChange={(event) => updateCaptureField("return_arrival_date", event.target.value)} />
-                </div>
-                <div className="space-y-1">
-                  <Label htmlFor="capture-return-arrival-time">Return arrival time</Label>
-                  <Input id="capture-return-arrival-time" required type="time" value={captureForm.return_arrival_time} onChange={(event) => updateCaptureField("return_arrival_time", event.target.value)} />
-                </div>
-              </>
-            )}
-            {captureError && <p className="text-sm text-destructive sm:col-span-2" role="alert">{captureError}</p>}
-            <DialogFooter className="sm:col-span-2">
-              <Button type="button" variant="outline" onClick={() => setCaptureOpen(false)}>Cancel</Button>
-              <Button type="submit">Add flight to itinerary</Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </section>
   );
 }

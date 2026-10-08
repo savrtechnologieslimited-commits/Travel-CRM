@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Copy, Eye, Pencil, Share2, Trash2 } from "lucide-react";
+import { Copy, Pencil, Share2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { formatDate } from "@/lib/crm";
 import { buildPublicItineraryShareUrl, createItineraryShareFn } from "@/lib/itinerary-share";
 import { supabase } from "@/integrations/supabase/client";
+import { AssignedItineraryReviewDialog } from "@/components/assigned-itinerary-review-dialog";
 import { WhatsAppChatDialog } from "@/components/whatsapp-inbox";
 import { StatusBadge } from "@/components/status-badge";
 import { Button } from "@/components/ui/button";
@@ -139,12 +140,7 @@ export function LeadItineraryCard({
           <StatusBadge status={itinerary.status} />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button type="button" size="sm" variant="outline" asChild>
-            <Link to="/itinerary-builder" search={{ itineraryId: itinerary.id, preview: true }}>
-              <Eye className="mr-1.5 size-4" />
-              Review
-            </Link>
-          </Button>
+          <AssignedItineraryReviewDialog itineraryId={itinerary.id} title={title} />
           <Button type="button" size="sm" variant="outline" asChild>
             <Link to="/itinerary-builder" search={{ itineraryId: itinerary.id }}>
               <Pencil className="mr-1.5 size-4" />

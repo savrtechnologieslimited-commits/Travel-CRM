@@ -8,7 +8,6 @@ import {
   Copy,
   Edit3,
   ExternalLink,
-  Eye,
   MessageSquareText,
   Pencil,
   Phone,
@@ -27,6 +26,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { NewCustomerDialog } from "@/components/entity-dialogs";
 import { CustomerDeleteButton } from "@/components/customer-delete-button";
+import { AssignedItineraryReviewDialog } from "@/components/assigned-itinerary-review-dialog";
 import { WacrmContactMatchLink } from "@/components/wacrm-contact-match-link";
 import { WhatsAppChatDialog } from "@/components/whatsapp-inbox";
 import { StatusBadge } from "@/components/status-badge";
@@ -165,12 +165,7 @@ function AssignedItineraryCard({
           <StatusBadge status={itinerary.status} />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
-          <Button type="button" size="sm" variant="outline" asChild>
-            <Link to="/itinerary-builder" search={{ itineraryId: itinerary.id, preview: true }}>
-              <Eye className="mr-1.5 size-4" />
-              Review
-            </Link>
-          </Button>
+          <AssignedItineraryReviewDialog itineraryId={itinerary.id} title={title} />
           <Button type="button" size="sm" variant="outline" asChild>
             <Link to="/itinerary-builder" search={{ itineraryId: itinerary.id }}>
               <Pencil className="mr-1.5 size-4" />

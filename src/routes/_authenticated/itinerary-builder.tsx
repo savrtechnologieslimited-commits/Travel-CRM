@@ -9513,16 +9513,19 @@ function ItineraryBuilderPage() {
       flight_number: offer.flight_number,
       departure_city: offer.from,
       arrival_city: offer.to,
+      departure_airport: offer.from,
+      arrival_airport: offer.to,
       flight_departure_date: departureDate,
       flight_departure_time: departureTime,
       flight_arrival_date: arrivalDate,
       flight_arrival_time: arrivalTime,
       flight_cabin: offer.cabin ?? "Economy",
       flight_duration: duration,
+      baggage_information: offer.baggage_information ?? "",
       flight_price: offer.price,
       flight_currency: offer.currency,
       flight_option: selectedFlightOption,
-      notes: `Manually captured from Google Flights · ${offer.stops ? `${offer.stops} stop(s)` : "Non-stop"}. Verify fare and availability before booking.`,
+      notes: `Captured from flight details · ${offer.stops === undefined ? "Stops not identified" : offer.stops === 0 ? "Non-stop" : `${offer.stops} stop(s)`}. Verify fare and availability before booking.`,
     });
     if (offer.return_departure_at && offer.return_arrival_at) {
       const returnDepartureDate =
@@ -9542,11 +9545,17 @@ function ItineraryBuilderPage() {
         flight_arrival_date: returnArrivalDate,
         flight_arrival_time: returnArrivalTime,
         flight_cabin: offer.cabin ?? "Economy",
-        flight_duration: "",
+        flight_duration: (offer.return_duration ?? "")
+          .replace(/(\d+)h/g, "$1 hr ")
+          .replace(/(\d+)m/g, "$1 min")
+          .trim(),
+        baggage_information: offer.return_baggage_information ?? "",
         flight_price: null,
         flight_currency: offer.currency,
         flight_option: selectedFlightOption,
-        notes: `Return leg. Round-trip fare ${offer.currency} ${offer.price.toLocaleString("en-IN")} is recorded on the outbound leg.`,
+        notes: `Return leg${offer.return_stops === undefined ? "; stops not identified" : `; ${offer.return_stops === 0 ? "non-stop" : `${offer.return_stops} stop(s)`}`}. ${offer.price > 0
+          ? `Round-trip fare ${offer.currency} ${offer.price.toLocaleString("en-IN")} is recorded on the outbound leg.`
+          : "Fare was not identified in the source; confirm it before booking."}`,
       });
     }
   }

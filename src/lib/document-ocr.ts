@@ -13,7 +13,7 @@ export type DocumentExtractionInput = {
   sourceText?: string;
   fileName?: string;
   mimeType?: string;
-  file?: Buffer;
+  file?: Buffer | Uint8Array;
   fetcher?: (input: { url: string; options?: RequestInit; body?: unknown }) => Promise<{
     ok: boolean;
     json: () => Promise<any>;
@@ -80,7 +80,9 @@ export class NativeDocumentExtractor {
       };
     }
 
-    const file = input.file ?? Buffer.alloc(0);
+    const file = input.file
+      ? Buffer.isBuffer(input.file) ? input.file : Buffer.from(input.file)
+      : Buffer.alloc(0);
     const fileName = (input.fileName ?? "").toLowerCase();
     const mimeType = input.mimeType ?? "";
 
@@ -148,7 +150,9 @@ export class PaddleOCRAdapter {
       };
     });
 
-    const file = input.file ?? Buffer.alloc(0);
+    const file = input.file
+      ? Buffer.isBuffer(input.file) ? input.file : Buffer.from(input.file)
+      : Buffer.alloc(0);
     const fileName = input.fileName ?? "document";
     const mimeType = input.mimeType ?? "application/octet-stream";
     const payload = {
@@ -638,7 +642,8 @@ async function extractBrowserImageText(
     onProgress?.({ stage: "loading_ocr", page: 1, totalPages: 1 });
     const ocr = await getBrowserOcrEngine();
     onProgress?.({ stage: "recognizing", page: 1, totalPages: 1 });
-    const [result] = await ocr.predict(fileBuffer instanceof Blob ? fileBuffer : new Blob([fileBuffer], { type: mimeType || "application/octet-stream" }));
+    const imageBytes = Uint8Array.from(fileBuffer);
+    const [result] = await ocr.predict(new Blob([imageBytes.buffer], { type: mimeType || "application/octet-stream" }));
     const fragments = Array.isArray(result?.items)
       ? result.items.map((item: any) => normalizeOcrFragment(item, 1)).filter((item): item is OCRFragment => Boolean(item))
       : [];

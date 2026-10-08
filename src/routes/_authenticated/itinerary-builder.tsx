@@ -4392,11 +4392,6 @@ function ItineraryBuilderPage() {
   const [saving, setSaving] = useState(false);
   const [assignedSaveConfirmed, setAssignedSaveConfirmed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  useEffect(() => {
-    if (!assignedSaveConfirmed) return;
-    const timer = window.setTimeout(() => setAssignedSaveConfirmed(false), 3000);
-    return () => window.clearTimeout(timer);
-  }, [assignedSaveConfirmed]);
   const [costLines, setCostLines] = useState<ItineraryCostLine[]>([]);
   const [copyMetadata, setCopyMetadata] = useState<ItineraryCopyMetadata>({});
   const [previewTemplate, setPreviewTemplate] =
@@ -14523,6 +14518,30 @@ function ItineraryBuilderPage() {
               <Button type="button" variant="outline" onClick={downloadPreviewPdf}>
                 Download PDF
               </Button>
+              {currentItineraryId && form.customer_id && (
+                <Button
+                  type="button"
+                  variant={assignedSaveConfirmed ? "default" : "outline"}
+                  className={
+                    assignedSaveConfirmed
+                      ? "bg-emerald-600 text-white hover:bg-emerald-700"
+                      : undefined
+                  }
+                  disabled={saving || librarySaveInProgress}
+                  onClick={() => void saveItinerary(false)}
+                >
+                  {saving ? (
+                    "Saving…"
+                  ) : assignedSaveConfirmed ? (
+                    <>
+                      <Check className="mr-1.5 size-4" />
+                      Saved
+                    </>
+                  ) : (
+                    "Save to Assigned Itinerary"
+                  )}
+                </Button>
+              )}
               {copyMode && !currentItineraryId && (
                 <Button
                   type="button"

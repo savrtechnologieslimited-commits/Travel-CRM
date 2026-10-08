@@ -174,6 +174,7 @@ describe("travel research providers", () => {
       infants: 0,
       cabin: "Economy",
       tripType: "one-way",
+      currency: "INR",
     };
 
     const goibibo = buildFlightSearchLink(flightSearchProviders[0], params);
@@ -189,7 +190,22 @@ describe("travel research providers", () => {
     expect(mmT).toContain("paxType=A-2_C-0_I-0");
 
     const google = buildFlightSearchLink(flightSearchProviders[2], params);
-    expect(google).toContain("https://www.google.com/travel/flights");
+    const googleUrl = new URL(google);
+    expect(googleUrl.origin + googleUrl.pathname).toBe("https://www.google.com/travel/flights");
+    expect(googleUrl.searchParams.get("q")).toContain("Flights from HYD to AMD on 2026-09-30");
+    expect(googleUrl.searchParams.get("q")).toContain("one way");
+    expect(googleUrl.searchParams.get("q")).toContain("2 adults");
+    expect(googleUrl.searchParams.get("q")).toContain("economy");
+    expect(googleUrl.searchParams.get("curr")).toBe("INR");
+
+    const googleRoundTrip = buildFlightSearchLink(flightSearchProviders[2], {
+      ...params,
+      returnDate: "2026-10-04",
+      tripType: "round-trip",
+    });
+    const googleRoundTripUrl = new URL(googleRoundTrip);
+    expect(googleRoundTripUrl.searchParams.get("q")).toContain("Flights from HYD to AMD on 2026-09-30 return 2026-10-04");
+    expect(googleRoundTripUrl.searchParams.get("q")).not.toContain("one way");
   });
 
   test("builds the expected Goibibo station search URL", () => {

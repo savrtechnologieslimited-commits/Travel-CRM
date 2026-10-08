@@ -10,22 +10,11 @@ export type LiveFlightOffer = {
   return_to?: string;
   return_departure_at?: string;
   return_arrival_at?: string;
+  return_airline?: string;
   return_flight_number?: string;
   duration: string;
   stops: number;
   price: number;
   currency: string;
   cabin?: string;
-};
-
-export type LiveFlightSearchInput = {
-  from: string;
-  to: string;
-  departure: string;
-  adults: number;
-  children: number;
-  infants: number;
-  cabin: string;
-  currency: string;
-  directFlight: boolean;
 };

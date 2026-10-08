@@ -9522,7 +9522,7 @@ function ItineraryBuilderPage() {
       flight_price: offer.price,
       flight_currency: offer.currency,
       flight_option: selectedFlightOption,
-      notes: `Live fare search · ${offer.stops ? `${offer.stops} stop(s)` : "Non-stop"}. Fare can change before booking.`,
+      notes: `Manually captured from Google Flights · ${offer.stops ? `${offer.stops} stop(s)` : "Non-stop"}. Verify fare and availability before booking.`,
     });
     if (offer.return_departure_at && offer.return_arrival_at) {
       const returnDepartureDate =
@@ -9533,7 +9533,7 @@ function ItineraryBuilderPage() {
         /(?:T|\s)(\d{2}:\d{2})/.exec(offer.return_departure_at)?.[1] ?? "";
       const returnArrivalTime = /(?:T|\s)(\d{2}:\d{2})/.exec(offer.return_arrival_at)?.[1] ?? "";
       addResearchItem("flight", {
-        flight_airline: offer.airline,
+        flight_airline: offer.return_airline ?? offer.airline,
         flight_number: offer.return_flight_number ?? "",
         departure_city: offer.return_from ?? offer.to,
         arrival_city: offer.return_to ?? offer.from,

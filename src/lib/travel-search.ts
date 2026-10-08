@@ -1,7 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { buildFlightSearchLink, flightSearchProviders } from "@/lib/travel-search-providers";
-import type { LiveFlightSearchInput } from "@/lib/travel-search-types";
 
 type FlightSearchInput = {
   from: string;
@@ -60,16 +59,4 @@ export const searchFlightsFn = createServerFn({ method: "POST" })
         directFlight: data.directFlight,
       }),
     }));
-  });
-
-export const searchLiveFlightOffersFn = createServerFn({ method: "POST" })
-  .middleware([requireSupabaseAuth])
-  .validator((input: LiveFlightSearchInput) => input)
-  .handler(async ({ data }) => {
-    const { searchSearchApiFlightOffers } = await import("@/lib/travel-search.server");
-    return searchSearchApiFlightOffers({
-      ...data,
-      from: typeof data.from === "string" ? data.from.trim().toUpperCase() : "",
-      to: typeof data.to === "string" ? data.to.trim().toUpperCase() : "",
-    });
   });

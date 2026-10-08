@@ -2,9 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   normalizeAmadeusFlightOffers,
   normalizeDuffelFlightOffers,
-  normalizeSearchApiFlightOffers,
   searchDuffelFlightOffers,
-  searchSearchApiFlightOffers,
 } from "./travel-search.server";
 
 describe("live travel fare normalization", () => {
@@ -80,69 +78,4 @@ describe("live travel fare normalization", () => {
     }]);
   });
 
-  test("normalizes SearchApi Google Flights offers using local airport times", () => {
-    const offers = normalizeSearchApiFlightOffers({
-      best_flights: [{
-        flights: [{
-          departure_airport: { id: "HYD", date: "2026-10-01", time: "08:15" },
-          arrival_airport: { id: "DEL", date: "2026-10-01", time: "10:25" },
-          airline: "Air India",
-          flight_number: "AI 101",
-          travel_class: "Economy",
-        }],
-        total_duration: 130,
-        layovers: [],
-        price: 8450,
-      }],
-    }, "INR");
-    expect(offers[0]).toMatchObject({
-      from: "HYD",
-      to: "DEL",
-      departure_at: "2026-10-01T08:15",
-      arrival_at: "2026-10-01T10:25",
-      duration: "2h 10m",
-      stops: 0,
-      price: 8450,
-      currency: "INR",
-      cabin: "Economy",
-    });
-  });
-
-  test("requests validated one-way fares from SearchApi and handles quota errors", async () => {
-    const input = {
-      from: "HYD",
-      to: "DEL",
-      departure: "2026-10-01",
-      adults: 1,
-      children: 0,
-      infants: 0,
-      cabin: "Economy",
-      currency: "INR",
-      directFlight: true,
-    };
-    let requestUrl: URL | undefined;
-    const offers = await searchSearchApiFlightOffers(input, "server-only-test-key", async (url) => {
-      requestUrl = new URL(String(url));
-      return new Response(JSON.stringify({
-        best_flights: [{
-          flights: [{
-            departure_airport: { id: "HYD", date: "2026-10-01", time: "08:15" },
-            arrival_airport: { id: "DEL", date: "2026-10-01", time: "10:25" },
-            airline: "Air India",
-            flight_number: "AI 101",
-          }],
-          price: 8450,
-        }],
-      }), { status: 200 });
-    });
-    expect(requestUrl?.searchParams.get("api_key")).toBe("server-only-test-key");
-    expect(requestUrl?.searchParams.get("flight_type")).toBe("one_way");
-    expect(requestUrl?.searchParams.get("stops")).toBe("nonstop");
-    expect(requestUrl?.searchParams.get("no_cache")).toBe("true");
-    expect(offers[0]).toMatchObject({ from: "HYD", to: "DEL", price: 8450, currency: "INR" });
-
-    await expect(searchSearchApiFlightOffers({ ...input, departure: "2026-02-31" }, "test-key")).rejects.toThrow("valid date");
-    await expect(searchSearchApiFlightOffers(input, "test-key", async () => new Response(null, { status: 429 })))
-      .rejects.toThrow("request limit reached");
-  });
 });

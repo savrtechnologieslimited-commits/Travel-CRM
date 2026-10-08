@@ -246,6 +246,19 @@ export function buildFlightSearchLink(provider: SearchProvider, params: FlightSe
   const google = new URL("https://www.google.com/travel/flights");
   google.searchParams.set("hl", "en");
   if (params.currency) google.searchParams.set("curr", params.currency);
+  const isRoundTrip = params.tripType?.toLowerCase() === "round trip"
+    || params.tripType?.toLowerCase() === "round-trip"
+    || params.tripType?.toLowerCase() === "r";
+  const query = [
+    `Flights from ${params.from.trim()} to ${params.to.trim()} on ${params.departure}`,
+    isRoundTrip && params.returnDate ? `return ${params.returnDate}` : "one way",
+    `${Math.max(1, params.adults || 1)} adults`,
+    (params.children ?? 0) > 0 && `${params.children} children`,
+    (params.infants ?? 0) > 0 && `${params.infants} infants`,
+    params.cabin?.toLowerCase() ?? "economy",
+    params.directFlight && "nonstop",
+  ].filter(Boolean).join(" ");
+  google.searchParams.set("q", query);
   return google.toString();
 }
 

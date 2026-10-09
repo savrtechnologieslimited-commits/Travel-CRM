@@ -8598,6 +8598,7 @@ function ItineraryBuilderPage() {
     documentHtmlOverride?: string,
     formOverride?: Partial<TripForm>,
     allowMissingDestination = false,
+    allowIncompleteDraftOverride = false,
   ): Promise<boolean> {
     if (copyMode && !form.customer_id) {
       toast.error("Choose a customer before saving this itinerary copy.");
@@ -8691,6 +8692,8 @@ function ItineraryBuilderPage() {
         (formOverride?.destination_id ?? form.destination_id) ||
         destinations.find((destination) => destination.name === destinationName)?.id ||
         "";
+      const allowIncompleteDraft =
+        allowIncompleteDraftOverride || (formOverride?.status ?? form.status) === "DRAFT";
       const validation = validateItineraryDraftState(
         {
           title: saveTitle,
@@ -8777,8 +8780,10 @@ function ItineraryBuilderPage() {
           allowMissingDestination:
             Boolean(savedItemKind) ||
             allowMissingDestination ||
-            form.provenance === "AI_SUPPLIER_IMPORT",
-          allowMissingScheduledTimes: (formOverride?.status ?? form.status) === "DRAFT",
+            form.provenance === "AI_SUPPLIER_IMPORT" ||
+            allowIncompleteDraft,
+          allowMissingScheduledTimes: allowIncompleteDraft,
+          allowIncomplete: allowIncompleteDraft,
         },
       );
 
@@ -8937,14 +8942,17 @@ function ItineraryBuilderPage() {
             ...(typeof item.id === "string" ? { id: item.id } : {}),
           };
           const normalized = normalizeItineraryItem(normalizedInput);
-          const validated = validateItineraryDayItem({
-            ...normalized,
-            itinerary_day_id: savedDayId,
-            item_type: normalized.item_type,
-            title: normalized.title,
-            description: normalized.description,
-            sequence: normalized.sequence,
-          });
+          const validated = validateItineraryDayItem(
+            {
+              ...normalized,
+              itinerary_day_id: savedDayId,
+              item_type: normalized.item_type,
+              title: normalized.title,
+              description: normalized.description,
+              sequence: normalized.sequence,
+            },
+            { allowIncomplete: allowIncompleteDraft },
+          );
           itemPayloads.push({
             id: validated.id ?? crypto.randomUUID(),
             itinerary_day_id: savedDayId,
@@ -9253,23 +9261,19 @@ function ItineraryBuilderPage() {
         "",
         itineraryBuilderUrl(window.location.href, savedItineraryId),
       );
-      const missingTimeWarnings = validation.warnings.filter(
-        (issue) => issue.code === "MISSING_SCHEDULE_TIME",
-      );
+      const draftWarnings = validation.warnings;
       const savedMessage =
         "Itinerary saved with day content, inclusions, exclusions, photos, custom metadata and internal cost lines.";
       setMessage(
-        missingTimeWarnings.length > 0
-          ? `${savedMessage} ${missingTimeWarnings.map((issue) => issue.message).join(" ")}`
+        draftWarnings.length > 0
+          ? `${savedMessage} ${draftWarnings.map((issue) => issue.message).join(" ")}`
           : savedMessage,
       );
       setAssignedSaveConfirmed(true);
       toast.success("Itinerary saved");
-      if (missingTimeWarnings.length > 0) {
+      if (draftWarnings.length > 0) {
         toast.warning(
-          `Saved as a draft. Add the missing schedule times before marking it READY: ${missingTimeWarnings
-            .map((issue) => issue.message)
-            .join(" ")}`,
+          `Saved with ${draftWarnings.length} incomplete-field warning(s). Complete them before sending or booking.`,
         );
       }
       if (form.lead_id) {
@@ -9297,6 +9301,21 @@ function ItineraryBuilderPage() {
     } finally {
       setSaving(false);
     }
+  }
+
+  function saveAssignedItinerary() {
+    return saveItinerary(
+      false,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      false,
+      true,
+    );
   }
 
   useEffect(() => {
@@ -9970,7 +9989,7 @@ function ItineraryBuilderPage() {
                 assignedSaveConfirmed ? "bg-emerald-600 text-white hover:bg-emerald-700" : undefined
               }
               disabled={saving || librarySaveInProgress}
-              onClick={() => void saveItinerary(false)}
+              onClick={() => void saveAssignedItinerary()}
             >
               {saving ? (
                 "Saving…"
@@ -14528,7 +14547,7 @@ function ItineraryBuilderPage() {
                       : undefined
                   }
                   disabled={saving || librarySaveInProgress}
-                  onClick={() => void saveItinerary(false)}
+                  onClick={() => void saveAssignedItinerary()}
                 >
                   {saving ? (
                     "Saving…"

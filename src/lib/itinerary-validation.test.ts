@@ -143,6 +143,46 @@ describe("itinerary draft validation", () => {
     ]);
   });
 
+  test("allows assigned saves to persist incomplete itinerary fields as warnings", () => {
+    const result = validateItineraryDraftState(
+      {
+        title: "Pilgrimage itinerary",
+        status: "READY",
+        days: [
+          {
+            day_number: 1,
+            title: "",
+            items: [
+              { sequence: 1, item_type: "FLIGHT", title: "Flight" },
+              { sequence: 2, item_type: "VISA", title: "Visa" },
+              { sequence: 3, item_type: "EXTRA_TRANSPORT", title: "Transfer" },
+            ],
+          },
+        ],
+      },
+      { allowMissingScheduledTimes: true, allowIncomplete: true },
+    );
+
+    expect(result.errors).toEqual([]);
+    expect(result.valid).toBe(true);
+    expect(result.warnings.map((issue) => issue.message)).toContain(
+      "Day 1 flight must include an airline.",
+    );
+    expect(result.warnings.map((issue) => issue.message)).toContain(
+      "Day 1 flight must include a departure time.",
+    );
+    expect(result.warnings.map((issue) => issue.message)).toContain("Day 1 title is required.");
+    expect(result.warnings.map((issue) => issue.message)).toContain(
+      "Visa item 2 must include a country.",
+    );
+    expect(result.warnings.map((issue) => issue.message)).toContain(
+      "Visa item 2 must include a type.",
+    );
+    expect(result.warnings.map((issue) => issue.message)).toContain(
+      "Transport item 3 must include a transport type.",
+    );
+  });
+
   test("accepts start and end times on hotels and timed itinerary items", () => {
     const result = validateItineraryDraftState(
       {

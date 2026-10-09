@@ -119,16 +119,24 @@ export type ItineraryPhoto = {
   updated_at?: string | null | undefined;
 };
 
-const UUID_PATTERN = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+const UUID_PATTERN =
+  /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
 function readString(value: unknown, fallback = "") {
   return typeof value === "string" ? value.trim() : fallback;
 }
 
-export function normalizeItineraryItem(input: Partial<ItineraryContentItem> & { itinerary_day_id: string; item_type: ItineraryContentItemType }): ItineraryContentItem {
+export function normalizeItineraryItem(
+  input: Partial<ItineraryContentItem> & {
+    itinerary_day_id: string;
+    item_type: ItineraryContentItemType;
+  },
+): ItineraryContentItem {
   const sequence = Number(input.sequence ?? 0);
   const title = readString(input.title, "Untitled item") || "Untitled item";
-  const itemType = ITINERARY_CONTENT_ITEM_TYPES.includes(input.item_type as ItineraryContentItemType)
+  const itemType = ITINERARY_CONTENT_ITEM_TYPES.includes(
+    input.item_type as ItineraryContentItemType,
+  )
     ? (input.item_type as ItineraryContentItemType)
     : "NOTE";
 
@@ -146,7 +154,10 @@ export function normalizeItineraryItem(input: Partial<ItineraryContentItem> & { 
     departure_time: typeof input.departure_time === "string" ? input.departure_time : null,
     arrival_time: typeof input.arrival_time === "string" ? input.arrival_time : null,
     vehicle_details: typeof input.vehicle_details === "string" ? input.vehicle_details : null,
-    meal_type: input.meal_type && ["BREAKFAST", "LUNCH", "DINNER"].includes(input.meal_type) ? input.meal_type : null,
+    meal_type:
+      input.meal_type && ["BREAKFAST", "LUNCH", "DINNER"].includes(input.meal_type)
+        ? input.meal_type
+        : null,
     hotel_name: typeof input.hotel_name === "string" ? input.hotel_name : null,
     hotel_city: typeof input.hotel_city === "string" ? input.hotel_city : null,
     check_in: typeof input.check_in === "string" ? input.check_in : null,
@@ -163,41 +174,77 @@ export function normalizeItineraryItem(input: Partial<ItineraryContentItem> & { 
     extra_beds: typeof input.extra_beds === "number" ? input.extra_beds : null,
     meal_plan: typeof input.meal_plan === "string" ? input.meal_plan : null,
     hotel_description: typeof input.hotel_description === "string" ? input.hotel_description : null,
-    customer_facing_info: typeof input.customer_facing_info === "string" ? input.customer_facing_info : null,
-    hotel_option_group: typeof input.hotel_option_group === "string" ? input.hotel_option_group : null,
-    hotel_option_label: typeof input.hotel_option_label === "string" ? input.hotel_option_label : null,
-    hotel_option_sequence: typeof input.hotel_option_sequence === "number" ? input.hotel_option_sequence : null,
+    customer_facing_info:
+      typeof input.customer_facing_info === "string" ? input.customer_facing_info : null,
+    hotel_option_group:
+      typeof input.hotel_option_group === "string" ? input.hotel_option_group : null,
+    hotel_option_label:
+      typeof input.hotel_option_label === "string" ? input.hotel_option_label : null,
+    hotel_option_sequence:
+      typeof input.hotel_option_sequence === "number" ? input.hotel_option_sequence : null,
     flight_airline: typeof input.flight_airline === "string" ? input.flight_airline : null,
     flight_number: typeof input.flight_number === "string" ? input.flight_number : null,
     departure_airport: typeof input.departure_airport === "string" ? input.departure_airport : null,
     departure_city: typeof input.departure_city === "string" ? input.departure_city : null,
     arrival_airport: typeof input.arrival_airport === "string" ? input.arrival_airport : null,
     arrival_city: typeof input.arrival_city === "string" ? input.arrival_city : null,
-    flight_departure_date: typeof input.flight_departure_date === "string" ? input.flight_departure_date : null,
-    flight_departure_time: typeof input.flight_departure_time === "string" ? input.flight_departure_time : null,
-    flight_arrival_date: typeof input.flight_arrival_date === "string" ? input.flight_arrival_date : null,
-    flight_arrival_time: typeof input.flight_arrival_time === "string" ? input.flight_arrival_time : null,
+    flight_departure_date:
+      typeof input.flight_departure_date === "string" ? input.flight_departure_date : null,
+    flight_departure_time:
+      typeof input.flight_departure_time === "string" ? input.flight_departure_time : null,
+    flight_arrival_date:
+      typeof input.flight_arrival_date === "string" ? input.flight_arrival_date : null,
+    flight_arrival_time:
+      typeof input.flight_arrival_time === "string" ? input.flight_arrival_time : null,
     flight_cabin: typeof input.flight_cabin === "string" ? input.flight_cabin : null,
-    baggage_information: typeof input.baggage_information === "string" ? input.baggage_information : null,
+    baggage_information:
+      typeof input.baggage_information === "string" ? input.baggage_information : null,
     flight_duration: typeof input.flight_duration === "string" ? input.flight_duration : null,
     flight_price: typeof input.flight_price === "number" ? input.flight_price : null,
     flight_currency: typeof input.flight_currency === "string" ? input.flight_currency : null,
     visa_country: typeof input.visa_country === "string" ? input.visa_country : null,
     visa_type: typeof input.visa_type === "string" ? input.visa_type : null,
     visa_validity: typeof input.visa_validity === "string" ? input.visa_validity : null,
-    visa_processing_time: typeof input.visa_processing_time === "string" ? input.visa_processing_time : null,
-    visa_required_documents: typeof input.visa_required_documents === "string" ? input.visa_required_documents : null,
-    visa_entry_exit_information: typeof input.visa_entry_exit_information === "string" ? input.visa_entry_exit_information : null,
-    visa_customer_information: typeof input.visa_customer_information === "string" ? input.visa_customer_information : null,
-    extra_transport_type: typeof input.extra_transport_type === "string" ? input.extra_transport_type : null,
-    extra_transport_date: typeof input.extra_transport_date === "string" ? input.extra_transport_date : null,
-    extra_transport_pickup_time: typeof input.extra_transport_pickup_time === "string" ? input.extra_transport_pickup_time : null,
-    extra_transport_drop_time: typeof input.extra_transport_drop_time === "string" ? input.extra_transport_drop_time : null,
-    extra_transport_vehicle_type: typeof input.extra_transport_vehicle_type === "string" ? input.extra_transport_vehicle_type : null,
-    extra_transport_vehicle_details: typeof input.extra_transport_vehicle_details === "string" ? input.extra_transport_vehicle_details : null,
-    extra_transport_driver_details: typeof input.extra_transport_driver_details === "string" ? input.extra_transport_driver_details : null,
-    extra_transport_passengers: typeof input.extra_transport_passengers === "number" ? input.extra_transport_passengers : null,
-    extra_transport_customer_notes: typeof input.extra_transport_customer_notes === "string" ? input.extra_transport_customer_notes : null,
+    visa_processing_time:
+      typeof input.visa_processing_time === "string" ? input.visa_processing_time : null,
+    visa_required_documents:
+      typeof input.visa_required_documents === "string" ? input.visa_required_documents : null,
+    visa_entry_exit_information:
+      typeof input.visa_entry_exit_information === "string"
+        ? input.visa_entry_exit_information
+        : null,
+    visa_customer_information:
+      typeof input.visa_customer_information === "string" ? input.visa_customer_information : null,
+    extra_transport_type:
+      typeof input.extra_transport_type === "string" ? input.extra_transport_type : null,
+    extra_transport_date:
+      typeof input.extra_transport_date === "string" ? input.extra_transport_date : null,
+    extra_transport_pickup_time:
+      typeof input.extra_transport_pickup_time === "string"
+        ? input.extra_transport_pickup_time
+        : null,
+    extra_transport_drop_time:
+      typeof input.extra_transport_drop_time === "string" ? input.extra_transport_drop_time : null,
+    extra_transport_vehicle_type:
+      typeof input.extra_transport_vehicle_type === "string"
+        ? input.extra_transport_vehicle_type
+        : null,
+    extra_transport_vehicle_details:
+      typeof input.extra_transport_vehicle_details === "string"
+        ? input.extra_transport_vehicle_details
+        : null,
+    extra_transport_driver_details:
+      typeof input.extra_transport_driver_details === "string"
+        ? input.extra_transport_driver_details
+        : null,
+    extra_transport_passengers:
+      typeof input.extra_transport_passengers === "number"
+        ? input.extra_transport_passengers
+        : null,
+    extra_transport_customer_notes:
+      typeof input.extra_transport_customer_notes === "string"
+        ? input.extra_transport_customer_notes
+        : null,
     sequence: Number.isFinite(sequence) ? Math.max(0, sequence) : 0,
     created_at: input.created_at ?? null,
     updated_at: input.updated_at ?? null,
@@ -211,16 +258,22 @@ export function normalizeItineraryItem(input: Partial<ItineraryContentItem> & { 
   return result;
 }
 
-export function validateItineraryDayItem(input: Partial<ItineraryContentItem>) {
+export function validateItineraryDayItem(
+  input: Partial<ItineraryContentItem>,
+  options: { allowIncomplete?: boolean } = {},
+) {
   if (!input.itinerary_day_id || !UUID_PATTERN.test(input.itinerary_day_id.trim())) {
     throw new Error("Itinerary day reference is invalid.");
   }
 
-  if (!input.item_type || !ITINERARY_CONTENT_ITEM_TYPES.includes(input.item_type as ItineraryContentItemType)) {
+  if (
+    !input.item_type ||
+    !ITINERARY_CONTENT_ITEM_TYPES.includes(input.item_type as ItineraryContentItemType)
+  ) {
     throw new Error("Item type is invalid.");
   }
 
-  if (!input.title || !input.title.trim()) {
+  if (!options.allowIncomplete && (!input.title || !input.title.trim())) {
     throw new Error("Item title is required.");
   }
 
@@ -230,16 +283,16 @@ export function validateItineraryDayItem(input: Partial<ItineraryContentItem>) {
   }
 
   if (input.item_type === "ACCOMMODATION") {
-    validateAccommodationItem(input);
+    validateAccommodationItem(input, options);
   }
   if (input.item_type === "FLIGHT") {
-    validateFlightItem(input);
+    validateFlightItem(input, options);
   }
   if (input.item_type === "VISA") {
-    validateVisaItem(input);
+    validateVisaItem(input, options);
   }
   if (input.item_type === "EXTRA_TRANSPORT") {
-    validateExtraTransportItem(input);
+    validateExtraTransportItem(input, options);
   }
 
   return normalizeItineraryItem({
@@ -264,43 +317,89 @@ function isValidDateOnly(value: string) {
   const month = Number(parts[1]!);
   const day = Number(parts[2]!);
   const date = new Date(Date.UTC(year, month - 1, day));
-  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+  return (
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
+  );
 }
 
-export function validateFlightItem(input: Partial<ItineraryContentItem>) {
-  if (!input.flight_airline?.trim()) throw new Error("Airline is required for flight.");
-  for (const [label, value] of [["departure", input.flight_departure_date], ["arrival", input.flight_arrival_date]] as const) {
+export function validateFlightItem(
+  input: Partial<ItineraryContentItem>,
+  options: { allowIncomplete?: boolean } = {},
+) {
+  if (!options.allowIncomplete && !input.flight_airline?.trim()) {
+    throw new Error("Airline is required for flight.");
+  }
+  for (const [label, value] of [
+    ["departure", input.flight_departure_date],
+    ["arrival", input.flight_arrival_date],
+  ] as const) {
     if (value && !isValidDateOnly(value)) throw new Error(`Flight ${label} date is invalid.`);
   }
   const departure = completeDateTime(input.flight_departure_date, input.flight_departure_time);
   const arrival = completeDateTime(input.flight_arrival_date, input.flight_arrival_time);
-  if (input.flight_departure_time && !departure) throw new Error("Flight departure date/time is invalid.");
-  if (input.flight_arrival_time && !arrival) throw new Error("Flight arrival date/time is invalid.");
-  if (departure && arrival && arrival < departure) throw new Error("Flight arrival cannot be before departure.");
-  if (input.flight_price != null && input.flight_price < 0) throw new Error("Flight price cannot be negative.");
-  if (input.flight_price != null && (!input.flight_currency || !/^[A-Z]{3}$/.test(input.flight_currency))) throw new Error("A valid three-letter flight currency is required when price is supplied.");
+  if (input.flight_departure_time && !departure)
+    throw new Error("Flight departure date/time is invalid.");
+  if (input.flight_arrival_time && !arrival)
+    throw new Error("Flight arrival date/time is invalid.");
+  if (departure && arrival && arrival < departure)
+    throw new Error("Flight arrival cannot be before departure.");
+  if (input.flight_price != null && input.flight_price < 0)
+    throw new Error("Flight price cannot be negative.");
+  if (
+    input.flight_price != null &&
+    (!input.flight_currency || !/^[A-Z]{3}$/.test(input.flight_currency))
+  )
+    throw new Error("A valid three-letter flight currency is required when price is supplied.");
   return input;
 }
 
-export function validateVisaItem(input: Partial<ItineraryContentItem>) {
-  if (!input.visa_country?.trim()) throw new Error("Visa country is required.");
-  if (!input.visa_type?.trim()) throw new Error("Visa type is required.");
+export function validateVisaItem(
+  input: Partial<ItineraryContentItem>,
+  options: { allowIncomplete?: boolean } = {},
+) {
+  if (!options.allowIncomplete && !input.visa_country?.trim()) {
+    throw new Error("Visa country is required.");
+  }
+  if (!options.allowIncomplete && !input.visa_type?.trim()) {
+    throw new Error("Visa type is required.");
+  }
   return input;
 }
 
-export function validateExtraTransportItem(input: Partial<ItineraryContentItem>) {
-  if (!input.extra_transport_type?.trim()) throw new Error("Transport type is required.");
-  if (!input.pickup?.trim() || !input.dropoff?.trim()) throw new Error("Transport pickup and drop locations are required.");
-  if (input.extra_transport_date && !isValidDateOnly(input.extra_transport_date)) throw new Error("Transport date is invalid.");
-  if (input.extra_transport_passengers != null && input.extra_transport_passengers < 0) throw new Error("Transport passengers cannot be negative.");
-  if (!TRANSPORT_TYPES.includes(input.extra_transport_type as (typeof TRANSPORT_TYPES)[number]) && input.extra_transport_type !== "Other") throw new Error("Transport type is not supported.");
-  if (input.extra_transport_vehicle_type && !VEHICLE_TYPES.includes(input.extra_transport_vehicle_type as (typeof VEHICLE_TYPES)[number])) throw new Error("Vehicle type is not supported.");
+export function validateExtraTransportItem(
+  input: Partial<ItineraryContentItem>,
+  options: { allowIncomplete?: boolean } = {},
+) {
+  if (!options.allowIncomplete && !input.extra_transport_type?.trim()) {
+    throw new Error("Transport type is required.");
+  }
+  if (!options.allowIncomplete && (!input.pickup?.trim() || !input.dropoff?.trim())) {
+    throw new Error("Transport pickup and drop locations are required.");
+  }
+  if (input.extra_transport_date && !isValidDateOnly(input.extra_transport_date))
+    throw new Error("Transport date is invalid.");
+  if (input.extra_transport_passengers != null && input.extra_transport_passengers < 0)
+    throw new Error("Transport passengers cannot be negative.");
+  if (
+    input.extra_transport_type?.trim() &&
+    !TRANSPORT_TYPES.includes(input.extra_transport_type as (typeof TRANSPORT_TYPES)[number]) &&
+    input.extra_transport_type !== "Other"
+  )
+    throw new Error("Transport type is not supported.");
+  if (
+    input.extra_transport_vehicle_type &&
+    !VEHICLE_TYPES.includes(input.extra_transport_vehicle_type as (typeof VEHICLE_TYPES)[number])
+  )
+    throw new Error("Vehicle type is not supported.");
   return input;
 }
 
-export function validateAccommodationItem(input: Partial<ItineraryContentItem>) {
+export function validateAccommodationItem(
+  input: Partial<ItineraryContentItem>,
+  options: { allowIncomplete?: boolean } = {},
+) {
   const isUnselectedAiSuggestion = input.metadata?.["hotel_suggestion"] === true;
-  if (!input.hotel_name?.trim() && !isUnselectedAiSuggestion) {
+  if (!options.allowIncomplete && !input.hotel_name?.trim() && !isUnselectedAiSuggestion) {
     throw new Error("Hotel name is required for accommodation.");
   }
 
@@ -314,38 +413,65 @@ export function validateAccommodationItem(input: Partial<ItineraryContentItem>) 
     }
   }
 
-  if (input.rooms != null && (!Number.isInteger(input.rooms) || input.rooms <= 0)) {
+  if (
+    input.rooms != null &&
+    (!Number.isInteger(input.rooms) ||
+      input.rooms < 0 ||
+      (input.rooms === 0 && !options.allowIncomplete))
+  ) {
     throw new Error("Hotel rooms must be a positive integer.");
   }
-  for (const [field, value] of [["adults", input.adults], ["children", input.children], ["extra beds", input.extra_beds]] as const) {
+  for (const [field, value] of [
+    ["adults", input.adults],
+    ["children", input.children],
+    ["extra beds", input.extra_beds],
+  ] as const) {
     if (value != null && (!Number.isInteger(value) || value < 0)) {
       throw new Error(`Hotel ${field} cannot be negative.`);
     }
   }
-  if (input.meal_plan && !HOTEL_MEAL_PLANS.includes(input.meal_plan as (typeof HOTEL_MEAL_PLANS)[number])) {
+  if (
+    input.meal_plan &&
+    !HOTEL_MEAL_PLANS.includes(input.meal_plan as (typeof HOTEL_MEAL_PLANS)[number])
+  ) {
     throw new Error("Hotel meal plan is not supported.");
   }
-  if (input.star_category && !HOTEL_STAR_CATEGORIES.includes(input.star_category as (typeof HOTEL_STAR_CATEGORIES)[number])) {
+  if (
+    input.star_category &&
+    !HOTEL_STAR_CATEGORIES.includes(input.star_category as (typeof HOTEL_STAR_CATEGORIES)[number])
+  ) {
     throw new Error("Hotel star category is not supported.");
   }
   if (input.room_type && !ROOM_TYPES.includes(input.room_type as (typeof ROOM_TYPES)[number])) {
     throw new Error("Hotel room type is not supported.");
   }
-  if (input.hotel_option_sequence != null && (!Number.isInteger(input.hotel_option_sequence) || input.hotel_option_sequence < 0)) {
+  if (
+    input.hotel_option_sequence != null &&
+    (!Number.isInteger(input.hotel_option_sequence) || input.hotel_option_sequence < 0)
+  ) {
     throw new Error("Hotel option sequence must be non-negative.");
   }
 
   return input;
 }
 
-export function reorderItineraryItems<T extends { id?: string | undefined; sequence: number }>(items: T[]) {
+export function reorderItineraryItems<T extends { id?: string | undefined; sequence: number }>(
+  items: T[],
+) {
   return [...items]
     .map((item, index) => ({ ...item, sequence: Number(item.sequence) || index + 1 }))
     .sort((left, right) => (Number(left.sequence) || 0) - (Number(right.sequence) || 0))
     .map((item, index) => ({ ...item, sequence: index + 1 }));
 }
 
-export function normalizeItineraryPhoto(input: Partial<ItineraryPhoto> & { itinerary_id: string; url?: string | null; storage_path?: string | null; sequence: number }): ItineraryPhoto {
+export function normalizeItineraryPhoto(
+  input: Partial<ItineraryPhoto> & {
+    itinerary_id: string;
+    url?: string | null;
+    storage_path?: string | null;
+    sequence: number;
+  },
+): ItineraryPhoto {
   const sequence = Number(input.sequence ?? 0);
   const result: ItineraryPhoto = {
     itinerary_id: input.itinerary_id,
@@ -363,7 +489,8 @@ export function normalizeItineraryPhoto(input: Partial<ItineraryPhoto> & { itine
   if (typeof input.is_primary === "boolean") result.is_primary = input.is_primary;
   if (input.google_place_id !== undefined) result.google_place_id = input.google_place_id;
   if (input.place_name !== undefined) result.place_name = input.place_name;
-  if (input.google_photo_reference !== undefined) result.google_photo_reference = input.google_photo_reference;
+  if (input.google_photo_reference !== undefined)
+    result.google_photo_reference = input.google_photo_reference;
   if (input.attribution !== undefined) result.attribution = input.attribution;
 
   if (typeof input.id === "string") {
@@ -379,12 +506,22 @@ export function normalizeItineraryPhoto(input: Partial<ItineraryPhoto> & { itine
   return result;
 }
 
-export function validateItineraryPhoto(input: Partial<ItineraryPhoto> & { itinerary_id: string; url?: string | null; storage_path?: string | null; sequence: number }) {
+export function validateItineraryPhoto(
+  input: Partial<ItineraryPhoto> & {
+    itinerary_id: string;
+    url?: string | null;
+    storage_path?: string | null;
+    sequence: number;
+  },
+) {
   if (!input.itinerary_id || !UUID_PATTERN.test(input.itinerary_id.trim())) {
     throw new Error("Itinerary reference is invalid.");
   }
 
-  if (!(typeof input.url === "string" && input.url.trim()) && !(typeof input.storage_path === "string" && input.storage_path.trim())) {
+  if (
+    !(typeof input.url === "string" && input.url.trim()) &&
+    !(typeof input.storage_path === "string" && input.storage_path.trim())
+  ) {
     throw new Error("Photo URL or Storage path is required.");
   }
 
@@ -414,7 +551,9 @@ export function validateItineraryPhoto(input: Partial<ItineraryPhoto> & { itiner
   });
 }
 
-export function reorderItineraryPhotos<T extends { id?: string | undefined; sequence: number }>(items: T[]) {
+export function reorderItineraryPhotos<T extends { id?: string | undefined; sequence: number }>(
+  items: T[],
+) {
   return [...items]
     .map((item, index) => ({ ...item, sequence: Number(item.sequence) || index + 1 }))
     .sort((left, right) => (Number(left.sequence) || 0) - (Number(right.sequence) || 0))
@@ -426,12 +565,16 @@ export function validateItineraryTable(input: Partial<ItineraryTable>) {
     throw new Error("Table title is required.");
   }
 
-  const columns = Array.isArray(input.columns) ? input.columns.map((column) => String(column ?? "").trim()) : [];
+  const columns = Array.isArray(input.columns)
+    ? input.columns.map((column) => String(column ?? "").trim())
+    : [];
   if (columns.length === 0) {
     throw new Error("A custom table must have at least one column.");
   }
 
-  const rows = Array.isArray(input.rows) ? input.rows.map((row) => (Array.isArray(row) ? row.map((cell) => String(cell ?? "")) : [])) : [];
+  const rows = Array.isArray(input.rows)
+    ? input.rows.map((row) => (Array.isArray(row) ? row.map((cell) => String(cell ?? "")) : []))
+    : [];
   if (rows.some((row) => row.length !== columns.length)) {
     throw new Error("Each table row must match the current column count.");
   }
@@ -451,9 +594,15 @@ export function validateItineraryTable(input: Partial<ItineraryTable>) {
 
 export function normalizeItineraryTable(input: Partial<ItineraryTable>): ItineraryTable {
   const fallbackTitle = input.title?.trim() || "Custom table";
-  const columns = Array.isArray(input.columns) ? input.columns.map((column) => String(column ?? "").trim()).filter(Boolean) : ["Column 1"];
+  const columns = Array.isArray(input.columns)
+    ? input.columns.map((column) => String(column ?? "").trim()).filter(Boolean)
+    : ["Column 1"];
   const rows = Array.isArray(input.rows)
-    ? input.rows.map((row) => (Array.isArray(row) ? row.map((cell) => String(cell ?? "")) : new Array(columns.length).fill("")))
+    ? input.rows.map((row) =>
+        Array.isArray(row)
+          ? row.map((cell) => String(cell ?? ""))
+          : new Array(columns.length).fill(""),
+      )
     : [];
 
   const result: ItineraryTable = {

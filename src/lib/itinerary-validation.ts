@@ -81,12 +81,14 @@ type ItineraryDraftValidationItem = {
   flight_arrival_date?: string | null | undefined;
   flight_departure_time?: string | null | undefined;
   flight_arrival_time?: string | null | undefined;
+  flight_airline?: string | null | undefined;
   flight_price?: number | null | undefined;
   flight_currency?: string | null | undefined;
   pickup?: string | null | undefined;
   dropoff?: string | null | undefined;
   extra_transport_passengers?: number | null | undefined;
   visa_country?: string | null | undefined;
+  visa_type?: string | null | undefined;
   extra_transport_type?: string | null | undefined;
   hotel_city?: string | null | undefined;
   location?: string | null | undefined;
@@ -132,6 +134,7 @@ export function validateItineraryDraftState(
   options: {
     allowMissingDestination?: boolean;
     allowMissingScheduledTimes?: boolean;
+    allowIncomplete?: boolean;
   } = {},
 ) {
   const errors: ValidationIssue[] = [];
@@ -154,7 +157,14 @@ export function validateItineraryDraftState(
 
   for (const [field, message] of Object.entries(headerValidation.errors)) {
     if (options.allowMissingDestination && field === "destination_id") continue;
-    addIssue(errors, { severity: "error", code: "MISSING_REQUIRED_FIELD", message, path: field });
+    const incompleteField = message.endsWith("required.");
+    const issue = {
+      severity: options.allowIncomplete && incompleteField ? "warning" : "error",
+      code: "MISSING_REQUIRED_FIELD",
+      message,
+      path: field,
+    } as const;
+    addIssue(options.allowIncomplete && incompleteField ? warnings : errors, issue);
   }
 
   if (input.travel_start_date && input.travel_end_date) {
@@ -180,9 +190,9 @@ export function validateItineraryDraftState(
           .sort()
           .at(-1);
   if (dayList.length === 0) {
-    addIssue(errors, {
-      severity: "error",
-      code: "INVALID_DAY_SEQUENCE",
+    addIssue(options.allowIncomplete ? warnings : errors, {
+      severity: options.allowIncomplete ? "warning" : "error",
+      code: options.allowIncomplete ? "MISSING_ITINERARY_DAY" : "INVALID_DAY_SEQUENCE",
       message: "At least one itinerary day is required.",
       path: "days",
     });
@@ -213,8 +223,8 @@ export function validateItineraryDraftState(
     seenDayNumbers.add(dayNumber);
 
     if (!day.title?.trim()) {
-      addIssue(errors, {
-        severity: "error",
+      addIssue(options.allowIncomplete ? warnings : errors, {
+        severity: options.allowIncomplete ? "warning" : "error",
         code: "MISSING_REQUIRED_FIELD",
         message: `Day ${dayNumber} title is required.`,
         path: `days[${index}].title`,
@@ -329,15 +339,14 @@ export function validateItineraryDraftState(
                 ];
       for (const [label, value] of requiredTimeFields) {
         if (!value) {
+          const allowMissingTime = options.allowMissingScheduledTimes || options.allowIncomplete;
           const issue = {
-            severity: options.allowMissingScheduledTimes ? "warning" : "error",
-            code: options.allowMissingScheduledTimes
-              ? "MISSING_SCHEDULE_TIME"
-              : "MISSING_REQUIRED_FIELD",
+            severity: allowMissingTime ? "warning" : "error",
+            code: allowMissingTime ? "MISSING_SCHEDULE_TIME" : "MISSING_REQUIRED_FIELD",
             message: `Day ${dayNumber} ${itemType.replaceAll("_", " ").toLowerCase()} must include a ${label}.`,
             path: `days[${index}].items[${itemIndex}]`,
           } as const;
-          addIssue(options.allowMissingScheduledTimes ? warnings : errors, issue);
+          addIssue(allowMissingTime ? warnings : errors, issue);
         } else if (!validTime(value)) {
           addIssue(errors, {
             severity: "error",
@@ -346,6 +355,15 @@ export function validateItineraryDraftState(
             path: `days[${index}].items[${itemIndex}]`,
           });
         }
+      }
+
+      if (itemType === "FLIGHT" && !item.flight_airline?.trim() && options.allowIncomplete) {
+        addIssue(warnings, {
+          severity: "warning",
+          code: "MISSING_REQUIRED_FIELD",
+          message: `Day ${dayNumber} flight must include an airline.`,
+          path: `days[${index}].items[${itemIndex}].flight_airline`,
+        });
       }
 
       const sequence = Number(item.sequence ?? itemIndex + 1);
@@ -368,8 +386,8 @@ export function validateItineraryDraftState(
       }
 
       if (!item.title?.trim()) {
-        addIssue(errors, {
-          severity: "error",
+        addIssue(options.allowIncomplete ? warnings : errors, {
+          severity: options.allowIncomplete ? "warning" : "error",
           code: "MISSING_REQUIRED_FIELD",
           message: `Day ${dayNumber} item ${itemIndex + 1} title is required.`,
           path: `days[${index}].items[${itemIndex}].title`,
@@ -377,18 +395,26 @@ export function validateItineraryDraftState(
       }
 
       try {
-        validateItineraryDayItem({
-          ...item,
-          itinerary_day_id: "00000000-0000-0000-0000-000000000000",
-          item_type: itemType,
-          title: item.title ?? "Untitled",
-          sequence,
-        });
+        validateItineraryDayItem(
+          {
+            ...item,
+            itinerary_day_id: "00000000-0000-0000-0000-000000000000",
+            item_type: itemType,
+            title: item.title ?? "Untitled",
+            sequence,
+          },
+          { allowIncomplete: options.allowIncomplete ?? false },
+        );
       } catch (error) {
-        addIssue(errors, {
-          severity: "error",
-          code: "INVALID_CONTENT_ITEM",
-          message: error instanceof Error ? error.message : "Invalid content item.",
+        const message = error instanceof Error ? error.message : "Invalid content item.";
+        const missingField = /required|must include/i.test(message);
+        addIssue(options.allowIncomplete && missingField ? warnings : errors, {
+          severity: options.allowIncomplete && missingField ? "warning" : "error",
+          code:
+            options.allowIncomplete && missingField
+              ? "MISSING_REQUIRED_FIELD"
+              : "INVALID_CONTENT_ITEM",
+          message,
           path: `days[${index}].items[${itemIndex}]`,
         });
       }
@@ -420,8 +446,8 @@ export function validateItineraryDraftState(
           });
         }
         if (!item.hotel_name?.trim()) {
-          addIssue(errors, {
-            severity: "error",
+          addIssue(options.allowIncomplete ? warnings : errors, {
+            severity: options.allowIncomplete ? "warning" : "error",
             code: "MISSING_REQUIRED_FIELD",
             message: `Accommodation item ${itemIndex + 1} must include a hotel name.`,
             path: `days[${index}].items[${itemIndex}].hotel_name`,
@@ -452,8 +478,8 @@ export function validateItineraryDraftState(
           });
         }
         if ((item.rooms ?? 0) < 1) {
-          addIssue(errors, {
-            severity: "error",
+          addIssue(options.allowIncomplete ? warnings : errors, {
+            severity: options.allowIncomplete ? "warning" : "error",
             code: "INVALID_ROOM_COUNT",
             message: `Accommodation item ${itemIndex + 1} must include at least one room.`,
             path: `days[${index}].items[${itemIndex}].rooms`,
@@ -467,6 +493,7 @@ export function validateItineraryDraftState(
             path: `days[${index}].items[${itemIndex}].meal_plan`,
           });
         }
+
         if (
           item.star_category &&
           !HOTEL_STAR_CATEGORIES.includes(String(item.star_category) as never)
@@ -545,12 +572,37 @@ export function validateItineraryDraftState(
 
       if (itemType === "VISA") {
         if (!item.visa_country?.trim()) {
-          addIssue(errors, {
-            severity: "error",
+          addIssue(options.allowIncomplete ? warnings : errors, {
+            severity: options.allowIncomplete ? "warning" : "error",
             code: "MISSING_REQUIRED_FIELD",
             message: `Visa item ${itemIndex + 1} must include a country.`,
             path: `days[${index}].items[${itemIndex}].visa_country`,
           });
+        }
+        if (!item.visa_type?.trim()) {
+          addIssue(options.allowIncomplete ? warnings : errors, {
+            severity: options.allowIncomplete ? "warning" : "error",
+            code: "MISSING_REQUIRED_FIELD",
+            message: `Visa item ${itemIndex + 1} must include a type.`,
+            path: `days[${index}].items[${itemIndex}].visa_type`,
+          });
+        }
+      }
+
+      if (itemType === "EXTRA_TRANSPORT" && options.allowIncomplete) {
+        for (const [field, label, value] of [
+          ["extra_transport_type", "a transport type", item.extra_transport_type],
+          ["pickup", "a pickup location", item.pickup],
+          ["dropoff", "a drop-off location", item.dropoff],
+        ] as const) {
+          if (!value?.trim()) {
+            addIssue(warnings, {
+              severity: "warning",
+              code: "MISSING_REQUIRED_FIELD",
+              message: `Transport item ${itemIndex + 1} must include ${label}.`,
+              path: `days[${index}].items[${itemIndex}].${field}`,
+            });
+          }
         }
       }
 
@@ -559,8 +611,8 @@ export function validateItineraryDraftState(
         !item.pickup?.trim() &&
         !item.dropoff?.trim()
       ) {
-        addIssue(errors, {
-          severity: "error",
+        addIssue(options.allowIncomplete ? warnings : errors, {
+          severity: options.allowIncomplete ? "warning" : "error",
           code: "MISSING_REQUIRED_FIELD",
           message: `Transport item ${itemIndex + 1} must include pickup and/or dropoff details.`,
           path: `days[${index}].items[${itemIndex}]`,

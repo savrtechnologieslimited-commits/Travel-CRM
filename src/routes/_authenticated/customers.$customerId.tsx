@@ -692,27 +692,25 @@ function ItinerarySummaryCards({
   items: ItinerarySummaryItem[];
 }) {
   const dayNumbers = new Map(days.map((day) => [day.id, day.day_number]));
-  const linkedSupplierIds = Array.from(
-    new Set(
-      items
-        .map((item) => readItemMetadata(item.metadata)["supplier_id"])
-        .filter((supplierId): supplierId is string => typeof supplierId === "string"),
-    ),
-  );
+  const [dmcName, setDmcName] = useState("");
   const dmcSuppliers = useQuery({
-    queryKey: ["customer-booking-dmc-suppliers", linkedSupplierIds],
-    enabled: linkedSupplierIds.length > 0,
+    queryKey: ["customer-booking-dmc-suppliers"],
     queryFn: async () => {
       const { data: suppliers, error: suppliersError } = await supabase
         .from("suppliers")
-        .select("id,name,category,supplier_types,contact_person,phone,email,region,city,country")
-        .in("id", linkedSupplierIds);
+        .select(
+          "id,name,category,supplier_types,contact_person,phone,email,region,city,country,gstin,notes",
+        )
+        .order("name", { ascending: true });
       if (suppliersError) throw suppliersError;
       return (suppliers ?? []).filter(
         (supplier) => supplier.category === "dmc" || supplier.supplier_types.includes("dmc"),
       );
     },
   });
+  const selectedDmc = (dmcSuppliers.data ?? []).find(
+    (supplier) => supplier.name.toLocaleLowerCase() === dmcName.trim().toLocaleLowerCase(),
+  );
   const hotels = items.filter((item) => item.item_type === "ACCOMMODATION");
   const flights = items.filter((item) => item.item_type === "FLIGHT");
   const activities = items.filter(
@@ -969,14 +967,56 @@ function ItinerarySummaryCards({
             <h4 className="text-sm font-semibold text-slate-800">
               Destination management companies
             </h4>
+            <label className="grid max-w-xl gap-1.5 text-sm font-medium text-slate-700">
+              DMC company name
+              <input
+                type="text"
+                list={`dmc-suggestions-${itinerary.id}`}
+                value={dmcName}
+                onChange={(event) => setDmcName(event.target.value)}
+                placeholder="Type or select a saved DMC"
+                autoComplete="off"
+                className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm text-slate-900 outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+              />
+              <datalist id={`dmc-suggestions-${itinerary.id}`}>
+                {(dmcSuppliers.data ?? []).map((supplier) => (
+                  <option key={supplier.id} value={supplier.name} />
+                ))}
+              </datalist>
+            </label>
             {dmcSuppliers.isLoading ? (
               <p className="text-sm text-slate-500">Loading DMCs…</p>
             ) : dmcSuppliers.isError ? (
               <p className="text-sm text-rose-700" role="alert">
-                Could not load DMCs: {errorMessage(dmcSuppliers.error)}
+                Could not load DMCs:{" "}
+                {dmcSuppliers.error instanceof Error ? dmcSuppliers.error.message : "Unknown error"}
               </p>
             ) : (
               (() => {
+                const renderSupplierFields = (
+                  supplier: NonNullable<typeof dmcSuppliers.data>[number],
+                ) => (
+                  <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+                    {[
+                      ["Company name", supplier.name],
+                      ["Contact person name", supplier.contact_person],
+                      ["Phone", supplier.phone],
+                      ["Email", supplier.email],
+                      ["Destination / region", supplier.region],
+                      ["City", supplier.city],
+                      ["Country", supplier.country],
+                      ["GSTIN", supplier.gstin],
+                      ["Notes", supplier.notes],
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <dt className="text-xs font-medium text-slate-500">{label}</dt>
+                        <dd className="mt-0.5 whitespace-pre-wrap text-slate-800">
+                          {value || "—"}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                );
                 const supplierById = new Map(
                   (dmcSuppliers.data ?? []).map((supplier) => [supplier.id, supplier]),
                 );
@@ -989,49 +1029,49 @@ function ItinerarySummaryCards({
                 const uniqueDmcs = Array.from(
                   new Map(assignedDmcs.map(({ supplier }) => [supplier.id, supplier])).values(),
                 );
-                return uniqueDmcs.length ? (
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    {uniqueDmcs.map((supplier) => {
-                      const services = assignedDmcs.filter(
-                        ({ supplier: assignedSupplier }) => assignedSupplier.id === supplier.id,
-                      );
-                      return (
-                        <article
-                          key={supplier.id}
-                          className="rounded-lg border border-slate-200 bg-white p-4"
-                        >
-                          <h4 className="font-semibold text-slate-900">{supplier.name}</h4>
-                          <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
-                            {[
-                              ["Contact person name", supplier.contact_person],
-                              ["Phone", supplier.phone],
-                              ["Email", supplier.email],
-                              ["Destination / region", supplier.region],
-                              ["City", supplier.city],
-                              ["Country", supplier.country],
-                            ].map(([label, value]) => (
-                              <div key={label}>
-                                <dt className="text-xs font-medium text-slate-500">{label}</dt>
-                                <dd className="mt-0.5 text-slate-800">{value || "—"}</dd>
-                              </div>
-                            ))}
-                          </dl>
-                          <p className="mt-2 text-xs text-slate-700">
-                            {services
-                              .map(
-                                ({ item }) =>
-                                  `Day ${dayNumbers.get(item.itinerary_day_id) ?? "—"} · ${item.title || "Service"}`,
-                              )
-                              .join("; ")}
-                          </p>
-                        </article>
-                      );
-                    })}
+                return (
+                  <div className="space-y-4">
+                    {selectedDmc ? (
+                      <article className="rounded-lg border border-slate-200 bg-white p-4">
+                        {renderSupplierFields(selectedDmc)}
+                      </article>
+                    ) : dmcName.trim() ? (
+                      <p className="text-sm text-slate-500">
+                        Select a saved DMC from the suggestions to view its details.
+                      </p>
+                    ) : null}
+                    {uniqueDmcs.length > 0 ? (
+                      <div className="grid gap-3 lg:grid-cols-2">
+                        {uniqueDmcs.map((supplier) => {
+                          const services = assignedDmcs.filter(
+                            ({ supplier: assignedSupplier }) => assignedSupplier.id === supplier.id,
+                          );
+                          return (
+                            <article
+                              key={supplier.id}
+                              className="rounded-lg border border-slate-200 bg-white p-4"
+                            >
+                              <h4 className="font-semibold text-slate-900">{supplier.name}</h4>
+                              {renderSupplierFields(supplier)}
+                              <p className="mt-2 text-xs text-slate-700">
+                                {services
+                                  .map(
+                                    ({ item }) =>
+                                      `Day ${dayNumbers.get(item.itinerary_day_id) ?? "—"} · ${item.title || "Service"}`,
+                                  )
+                                  .join("; ")}
+                              </p>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    ) : !selectedDmc && !dmcName.trim() ? (
+                      <p className="text-sm text-slate-500">
+                        No DMCs are assigned to this itinerary. Search saved DMCs above to view
+                        their details.
+                      </p>
+                    ) : null}
                   </div>
-                ) : (
-                  <p className="text-sm text-slate-500">
-                    No DMCs are assigned to items in this itinerary.
-                  </p>
                 );
               })()
             )}

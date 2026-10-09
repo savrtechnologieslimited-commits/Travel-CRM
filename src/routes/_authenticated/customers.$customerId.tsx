@@ -341,8 +341,7 @@ function BookingPaymentControl({
     typeof metadata["payment_proof_path"] === "string" ? metadata["payment_proof_path"] : null;
   const paymentProofName =
     typeof metadata["payment_proof_name"] === "string" ? metadata["payment_proof_name"] : null;
-  const paymentMode =
-    typeof metadata["payment_mode"] === "string" ? metadata["payment_mode"] : "";
+  const paymentMode = typeof metadata["payment_mode"] === "string" ? metadata["payment_mode"] : "";
   const [savingPaymentMode, setSavingPaymentMode] = useState(false);
 
   async function uploadFile(file: File, kind: "document" | "proof") {
@@ -693,6 +692,27 @@ function ItinerarySummaryCards({
   items: ItinerarySummaryItem[];
 }) {
   const dayNumbers = new Map(days.map((day) => [day.id, day.day_number]));
+  const linkedSupplierIds = Array.from(
+    new Set(
+      items
+        .map((item) => readItemMetadata(item.metadata)["supplier_id"])
+        .filter((supplierId): supplierId is string => typeof supplierId === "string"),
+    ),
+  );
+  const dmcSuppliers = useQuery({
+    queryKey: ["customer-booking-dmc-suppliers", linkedSupplierIds],
+    enabled: linkedSupplierIds.length > 0,
+    queryFn: async () => {
+      const { data: suppliers, error: suppliersError } = await supabase
+        .from("suppliers")
+        .select("id,name,category,supplier_types,phone,email,city,country")
+        .in("id", linkedSupplierIds);
+      if (suppliersError) throw suppliersError;
+      return (suppliers ?? []).filter(
+        (supplier) => supplier.category === "dmc" || supplier.supplier_types.includes("dmc"),
+      );
+    },
+  });
   const hotels = items.filter((item) => item.item_type === "ACCOMMODATION");
   const flights = items.filter((item) => item.item_type === "FLIGHT");
   const activities = items.filter(
@@ -792,6 +812,7 @@ function ItinerarySummaryCards({
           <TabsTrigger value="flights">Flights</TabsTrigger>
           <TabsTrigger value="activities">Activities</TabsTrigger>
           <TabsTrigger value="others">Others</TabsTrigger>
+          <TabsTrigger value="dmcs">DMCs</TabsTrigger>
         </TabsList>
         {[
           {
@@ -943,6 +964,70 @@ function ItinerarySummaryCards({
             </section>
           </TabsContent>
         ))}
+        <TabsContent value="dmcs" className="mt-0">
+          <section className="space-y-3">
+            <h4 className="text-sm font-semibold text-slate-800">
+              Destination management companies
+            </h4>
+            {dmcSuppliers.isLoading ? (
+              <p className="text-sm text-slate-500">Loading DMCs…</p>
+            ) : dmcSuppliers.isError ? (
+              <p className="text-sm text-rose-700" role="alert">
+                Could not load DMCs: {errorMessage(dmcSuppliers.error)}
+              </p>
+            ) : (
+              (() => {
+                const supplierById = new Map(
+                  (dmcSuppliers.data ?? []).map((supplier) => [supplier.id, supplier]),
+                );
+                const assignedDmcs = items.flatMap((item) => {
+                  const supplierId = readItemMetadata(item.metadata)["supplier_id"];
+                  const supplier =
+                    typeof supplierId === "string" ? supplierById.get(supplierId) : undefined;
+                  return supplier ? [{ supplier, item }] : [];
+                });
+                const uniqueDmcs = Array.from(
+                  new Map(assignedDmcs.map(({ supplier }) => [supplier.id, supplier])).values(),
+                );
+                return uniqueDmcs.length ? (
+                  <div className="grid gap-3 lg:grid-cols-2">
+                    {uniqueDmcs.map((supplier) => {
+                      const services = assignedDmcs.filter(
+                        ({ supplier: assignedSupplier }) => assignedSupplier.id === supplier.id,
+                      );
+                      return (
+                        <article
+                          key={supplier.id}
+                          className="rounded-lg border border-slate-200 bg-white p-4"
+                        >
+                          <h4 className="font-semibold text-slate-900">{supplier.name}</h4>
+                          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+                            {supplier.city && <span>{supplier.city}</span>}
+                            {supplier.country && <span>{supplier.country}</span>}
+                            {supplier.phone && <span>{supplier.phone}</span>}
+                            {supplier.email && <span>{supplier.email}</span>}
+                          </div>
+                          <p className="mt-2 text-xs text-slate-700">
+                            {services
+                              .map(
+                                ({ item }) =>
+                                  `Day ${dayNumbers.get(item.itinerary_day_id) ?? "—"} · ${item.title || "Service"}`,
+                              )
+                              .join("; ")}
+                          </p>
+                        </article>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    No DMCs are assigned to items in this itinerary.
+                  </p>
+                );
+              })()
+            )}
+          </section>
+        </TabsContent>
       </Tabs>
     </article>
   );
@@ -1015,28 +1100,6 @@ function CustomerDetailPage() {
       return { days: days ?? [], items: items ?? [] };
     },
   });
-  const linkedSupplierIds = Array.from(
-    new Set(
-      (selectedSummaries.data?.items ?? [])
-        .map((item) => readItemMetadata(item.metadata)["supplier_id"])
-        .filter((supplierId): supplierId is string => typeof supplierId === "string"),
-    ),
-  );
-  const dmcSuppliers = useQuery({
-    queryKey: ["customer-booking-dmc-suppliers", linkedSupplierIds],
-    enabled: linkedSupplierIds.length > 0,
-    queryFn: async () => {
-      const { data: suppliers, error: suppliersError } = await supabase
-        .from("suppliers")
-        .select("id,name,category,supplier_types,phone,email,city,country")
-        .in("id", linkedSupplierIds);
-      if (suppliersError) throw suppliersError;
-      return (suppliers ?? []).filter(
-        (supplier) => supplier.category === "dmc" || supplier.supplier_types.includes("dmc"),
-      );
-    },
-  });
-
   if (isLoading) return <p className="text-sm text-slate-500">Loading customer…</p>;
   if (isError) {
     return (
@@ -1240,9 +1303,6 @@ function CustomerDetailPage() {
           </TabsTrigger>
           <TabsTrigger value="payments" className="rounded-md px-3 py-1.5 text-sm">
             Payments
-          </TabsTrigger>
-          <TabsTrigger value="dmcs" className="rounded-md px-3 py-1.5 text-sm">
-            DMCs
           </TabsTrigger>
           <TabsTrigger value="requirements" className="rounded-md px-3 py-1.5 text-sm">
             Requirements
@@ -1502,77 +1562,6 @@ function CustomerDetailPage() {
             )}
           </section>
         </div>
-      )}
-
-      {tab === "dmcs" && (
-        <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <h2 className="text-sm font-semibold text-slate-900">DMCs in finalized itineraries</h2>
-          <p className="mt-1 text-xs text-slate-500">
-            Destination management partners assigned to items in the selected finalized itineraries.
-          </p>
-          {selectedSummaries.isLoading || dmcSuppliers.isLoading ? (
-            <p className="mt-4 text-sm text-slate-500">Loading DMCs…</p>
-          ) : selectedSummaries.isError || dmcSuppliers.isError ? (
-            <p className="mt-4 text-sm text-rose-700" role="alert">
-              Could not load DMCs:{" "}
-              {(selectedSummaries.error ?? dmcSuppliers.error) instanceof Error
-                ? (selectedSummaries.error ?? dmcSuppliers.error)?.message
-                : "Unknown error"}
-            </p>
-          ) : (
-            (() => {
-              const dmcById = new Map(
-                (dmcSuppliers.data ?? []).map((supplier) => [supplier.id, supplier]),
-              );
-              const days = selectedSummaries.data?.days ?? [];
-              const assignedDmcs = (selectedSummaries.data?.items ?? []).flatMap((item) => {
-                const supplierId = readItemMetadata(item.metadata)["supplier_id"];
-                const supplier =
-                  typeof supplierId === "string" ? dmcById.get(supplierId) : undefined;
-                const day = days.find((entry) => entry.id === item.itinerary_day_id);
-                const itinerary = finalizedItineraries.find(
-                  (entry) => entry.id === day?.itinerary_id,
-                );
-                return supplier && day && itinerary ? [{ supplier, item, day, itinerary }] : [];
-              });
-              const uniqueDmcs = Array.from(
-                new Map(assignedDmcs.map((entry) => [entry.supplier.id, entry.supplier])).values(),
-              );
-              return uniqueDmcs.length ? (
-                <div className="mt-4 space-y-3">
-                  {uniqueDmcs.map((supplier) => {
-                    const services = assignedDmcs.filter(
-                      (entry) => entry.supplier.id === supplier.id,
-                    );
-                    return (
-                      <article key={supplier.id} className="rounded-lg border border-slate-200 p-3">
-                        <h3 className="text-sm font-semibold text-slate-900">{supplier.name}</h3>
-                        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                          {supplier.city && <span>{supplier.city}</span>}
-                          {supplier.country && <span>{supplier.country}</span>}
-                          {supplier.phone && <span>{supplier.phone}</span>}
-                          {supplier.email && <span>{supplier.email}</span>}
-                        </div>
-                        <p className="mt-2 text-xs text-slate-700">
-                          {services
-                            .map(
-                              ({ itinerary, day, item }) =>
-                                `${itinerary.title || itinerary.name || "Itinerary"} · Day ${day.day_number} · ${item.title || "Service"}`,
-                            )
-                            .join("; ")}
-                        </p>
-                      </article>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="mt-4 text-sm text-slate-500">
-                  No DMCs are assigned to items in the selected finalized itineraries.
-                </p>
-              );
-            })()
-          )}
-        </section>
       )}
 
       {tab === "itineraries" && (

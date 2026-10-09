@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { searchAirports } from "./airports";
+import { resolveFlightAirportCode, searchAirports } from "./airports";
 import { buildFlightSearchLink, flightSearchProviders } from "./travel-search-providers";
 
 describe("airport search", () => {
@@ -19,6 +19,14 @@ describe("airport search", () => {
     expect(searchAirports("Bangalore")[0]?.code).toBe("BLR");
     expect(searchAirports("Mumbai").map((airport) => airport.code)).toEqual(["BOM"]);
     expect(searchAirports("London").map((airport) => airport.code)).toEqual(["LHR", "LGW"]);
+  });
+
+  test("resolves flight airport codes from saved airport and city labels", () => {
+    expect(resolveFlightAirportCode("HYD")).toBe("HYD");
+    expect(resolveFlightAirportCode("Rajiv Gandhi International Airport (HYD)")).toBe("HYD");
+    expect(resolveFlightAirportCode("Hyderabad, India")).toBe("HYD");
+    expect(resolveFlightAirportCode("London")).toBeNull();
+    expect(resolveFlightAirportCode("unknown destination")).toBeNull();
   });
 
   test("uses selected airport codes, not city labels, in flight search links", () => {

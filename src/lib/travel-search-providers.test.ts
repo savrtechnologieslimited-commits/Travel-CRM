@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   buildFlightSearchLink,
+  buildMakeMyTripHotelSearchLink,
   buildTravelSearchProvider,
   buildTravelSearchUrl,
   buildTrainSearchLink,
@@ -15,6 +16,30 @@ import {
 import { TRAIN_STATIONS } from "./train-stations";
 
 describe("travel research providers", () => {
+  test("builds a MakeMyTrip hotel results link for a specific hotel and stay", () => {
+    const link = buildMakeMyTripHotelSearchLink({
+      hotelName: "Marasa Sarovar Premiere Hotel",
+      city: "Bodhgaya",
+      checkIn: "2026-10-16",
+      checkOut: "2026-10-18",
+      adults: 2,
+      children: 0,
+      rooms: 1,
+    });
+
+    expect(link).not.toBeNull();
+    const url = new URL(link!);
+    expect(url.pathname).toBe("/hotels/hotel-listing/");
+    expect(url.searchParams.get("searchText")).toBe("Marasa Sarovar Premiere Hotel, Bodhgaya");
+    expect(url.searchParams.get("checkin")).toBe("20261016");
+    expect(url.searchParams.get("checkout")).toBe("20261018");
+    expect(url.searchParams.get("roomStayQualifier")).toBe("2e0e");
+  });
+
+  test("does not build a category-only MakeMyTrip hotel link", () => {
+    expect(buildMakeMyTripHotelSearchLink({})).toBeNull();
+  });
+
   test("hotel search fields pre-populate correctly", () => {
     const query = generateHotelSearchQuery({
       destination: "Dubai",

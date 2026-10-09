@@ -270,3 +270,30 @@ export function searchAirports(query: string, limit = 10): Airport[] {
     .slice(0, limit)
     .map(({ airport }) => airport);
 }
+
+export function resolveFlightAirportCode(value: string | null | undefined): string | null {
+  const input = value?.trim();
+  if (!input) return null;
+
+  const upperInput = input.toUpperCase();
+  const explicitCode =
+    /(?:^|[,(]\s*|\s)([A-Z]{3})(?=$|[),\s-])/.exec(upperInput)?.[1] ?? null;
+  if (explicitCode && AIRPORTS.some((airport) => airport.code === explicitCode)) {
+    return explicitCode;
+  }
+
+  const searchTerms = [input.split(/[,(]/, 1)[0]?.trim(), input].filter(Boolean);
+  for (const term of searchTerms) {
+    const matches = searchAirports(term, AIRPORTS.length);
+    const normalized = term.toLocaleLowerCase();
+    const exactCityMatches = matches.filter(
+      (airport) =>
+        airport.city.toLocaleLowerCase() === normalized ||
+        airport.aliases?.some((alias) => alias.toLocaleLowerCase() === normalized),
+    );
+    const candidates = exactCityMatches.length > 0 ? exactCityMatches : matches.slice(0, 1);
+    const codes = new Set(candidates.map((airport) => airport.code));
+    if (codes.size === 1) return candidates[0]?.code ?? null;
+  }
+  return null;
+}

@@ -18,10 +18,11 @@ import {
 import { toast } from "sonner";
 import { useCustomer } from "@/lib/data";
 import { formatDate, formatMoney, titleize } from "@/lib/crm";
+import { resolveFlightAirportCode } from "@/lib/airports";
 import {
+  buildMakeMyTripHotelSearchLink,
   buildFlightSearchLink,
   flightSearchProviders,
-  generateHotelSearchQuery,
 } from "@/lib/travel-search-providers";
 import { supabase } from "@/integrations/supabase/client";
 import { NewCustomerDialog } from "@/components/entity-dialogs";
@@ -610,27 +611,26 @@ function ItinerarySummaryCards({
   );
 
   function makeHotelSearchLink(item: ItinerarySummaryItem) {
-    const link = new URL("https://www.makemytrip.com/hotels/");
     const roomDetails = readItemMetadata(item.metadata)["room_details"];
     const rooms =
       item.rooms ?? (Array.isArray(roomDetails) && roomDetails.length > 0 ? roomDetails.length : 1);
-    link.searchParams.set(
-      "q",
-      generateHotelSearchQuery({
-        destination: item.hotel_name || item.title || item.hotel_city || item.location,
-        checkIn: item.check_in || itinerary.travel_start_date || "",
-        checkOut: item.check_out || itinerary.travel_end_date || "",
-        adults: item.adults ?? itinerary.adults ?? 1,
-        children: item.children ?? itinerary.children ?? 0,
-        rooms,
-      }),
-    );
-    return link.toString();
+    return buildMakeMyTripHotelSearchLink({
+      hotelName: item.hotel_name || item.title,
+      city: item.hotel_city || item.location,
+      checkIn: item.check_in || itinerary.travel_start_date,
+      checkOut: item.check_out || itinerary.travel_end_date,
+      adults: item.adults ?? itinerary.adults ?? 1,
+      children: item.children ?? itinerary.children ?? 0,
+      rooms,
+    });
   }
 
   function makeFlightSearchLink(item: ItinerarySummaryItem) {
-    const from = item.departure_airport || item.departure_city || "";
-    const to = item.arrival_airport || item.arrival_city || "";
+    const from =
+      resolveFlightAirportCode(item.departure_airport) ??
+      resolveFlightAirportCode(item.departure_city);
+    const to =
+      resolveFlightAirportCode(item.arrival_airport) ?? resolveFlightAirportCode(item.arrival_city);
     const departure = item.flight_departure_date || itinerary.travel_start_date;
     if (!makeMyTripFlightProvider || !from || !to || !departure) return null;
     return buildFlightSearchLink(makeMyTripFlightProvider, {

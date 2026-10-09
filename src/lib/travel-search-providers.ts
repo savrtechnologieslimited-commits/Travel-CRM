@@ -90,6 +90,16 @@ export type TravelSearchValues = Partial<{
   query: string;
 }>;
 
+export type MakeMyTripHotelSearchParams = {
+  hotelName?: string | null;
+  city?: string | null;
+  checkIn?: string | null;
+  checkOut?: string | null;
+  adults?: number | null;
+  children?: number | null;
+  rooms?: number | null;
+};
+
 export type TravelSearchConfigInput = Partial<Record<TravelSearchKind, string>>;
 
 const GOIBIBO_AIRPORTS: Record<string, { code: string; country: "IN" | "AE" }> = {
@@ -138,6 +148,34 @@ export function generateHotelSearchQuery(values: TravelSearchValues): string {
   parts.push(`${rooms} room${rooms === 1 ? "" : "s"}`);
 
   return parts.join(", ");
+}
+
+function formatMakeMyTripHotelDate(value: string | null | undefined): string | null {
+  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== value
+    ? null
+    : value.replaceAll("-", "");
+}
+
+export function buildMakeMyTripHotelSearchLink(params: MakeMyTripHotelSearchParams): string | null {
+  const searchText = [params.hotelName?.trim(), params.city?.trim()].filter(Boolean).join(", ");
+  if (!searchText) return null;
+
+  const url = new URL("https://www.makemytrip.com/hotels/hotel-listing/");
+  url.searchParams.set("searchText", searchText);
+  const checkIn = formatMakeMyTripHotelDate(params.checkIn);
+  const checkOut = formatMakeMyTripHotelDate(params.checkOut);
+  if (checkIn) url.searchParams.set("checkin", checkIn);
+  if (checkOut) url.searchParams.set("checkout", checkOut);
+
+  const adults = Math.max(1, normalizeNumber(params.adults, 1));
+  const rooms = Math.max(1, normalizeNumber(params.rooms, 1));
+  if ((params.children ?? 0) === 0 && rooms === 1) {
+    url.searchParams.set("roomStayQualifier", `${adults}e0e`);
+  }
+
+  return url.toString();
 }
 
 export function generateFlightSearchQuery(values: TravelSearchValues): string {

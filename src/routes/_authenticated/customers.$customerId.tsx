@@ -809,8 +809,8 @@ function ItinerarySummaryCards({
           <TabsTrigger value="hotels">Hotels</TabsTrigger>
           <TabsTrigger value="flights">Flights</TabsTrigger>
           <TabsTrigger value="activities">Activities</TabsTrigger>
-          <TabsTrigger value="others">Others</TabsTrigger>
           <TabsTrigger value="dmcs">DMCs</TabsTrigger>
+          <TabsTrigger value="others">Others</TabsTrigger>
         </TabsList>
         {[
           {

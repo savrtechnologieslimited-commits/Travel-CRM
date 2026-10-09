@@ -1589,30 +1589,52 @@ function CustomerDetailPage() {
       )}
 
       {tab === "payments" && (
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          {(data?.payments ?? []).length === 0 ? (
-            <p className="text-sm text-slate-500">No payments recorded.</p>
-          ) : (
-            <div className="space-y-3">
-              {(data?.payments ?? []).map((payment) => (
-                <div
-                  key={payment.id}
-                  className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">
-                      {formatMoney(payment.amount, payment.currency ?? "INR")}
-                    </p>
-                    <p className="mt-0.5 text-xs text-slate-500">
-                      {formatDate(payment.paid_on)} · {titleize(payment.method)}
-                    </p>
-                  </div>
-                  <StatusBadge status={payment.status} />
+        <Tabs defaultValue="to-suppliers" className="w-full">
+          <TabsList className="mb-4 h-auto gap-1 bg-slate-100 p-1">
+            <TabsTrigger value="to-suppliers" className="rounded-md px-3 py-1.5 text-sm">
+              Payments to Suppliers
+            </TabsTrigger>
+            <TabsTrigger value="from-customers" className="rounded-md px-3 py-1.5 text-sm">
+              Payments from Customers
+            </TabsTrigger>
+          </TabsList>
+          {[
+            { value: "to-suppliers", direction: "outbound" },
+            { value: "from-customers", direction: "inbound" },
+          ].map(({ value, direction }) => {
+            const payments = (data?.payments ?? []).filter(
+              (payment) => payment.direction === direction,
+            );
+            return (
+              <TabsContent key={value} value={value} className="mt-0">
+                <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                  {payments.length === 0 ? (
+                    <p className="text-sm text-slate-500">No payments recorded.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {payments.map((payment) => (
+                        <div
+                          key={payment.id}
+                          className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 p-3"
+                        >
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">
+                              {formatMoney(payment.amount, payment.currency ?? "INR")}
+                            </p>
+                            <p className="mt-0.5 text-xs text-slate-500">
+                              {formatDate(payment.paid_on)} · {titleize(payment.method)}
+                            </p>
+                          </div>
+                          <StatusBadge status={payment.status} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+              </TabsContent>
+            );
+          })}
+        </Tabs>
       )}
     </div>
   );

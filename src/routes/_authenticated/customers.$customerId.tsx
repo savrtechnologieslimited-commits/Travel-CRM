@@ -705,7 +705,7 @@ function ItinerarySummaryCards({
     queryFn: async () => {
       const { data: suppliers, error: suppliersError } = await supabase
         .from("suppliers")
-        .select("id,name,category,supplier_types,phone,email,city,country")
+        .select("id,name,category,supplier_types,contact_person,phone,email,region,city,country")
         .in("id", linkedSupplierIds);
       if (suppliersError) throw suppliersError;
       return (suppliers ?? []).filter(
@@ -1001,12 +1001,21 @@ function ItinerarySummaryCards({
                           className="rounded-lg border border-slate-200 bg-white p-4"
                         >
                           <h4 className="font-semibold text-slate-900">{supplier.name}</h4>
-                          <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
-                            {supplier.city && <span>{supplier.city}</span>}
-                            {supplier.country && <span>{supplier.country}</span>}
-                            {supplier.phone && <span>{supplier.phone}</span>}
-                            {supplier.email && <span>{supplier.email}</span>}
-                          </div>
+                          <dl className="mt-3 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+                            {[
+                              ["Contact person name", supplier.contact_person],
+                              ["Phone", supplier.phone],
+                              ["Email", supplier.email],
+                              ["Destination / region", supplier.region],
+                              ["City", supplier.city],
+                              ["Country", supplier.country],
+                            ].map(([label, value]) => (
+                              <div key={label}>
+                                <dt className="text-xs font-medium text-slate-500">{label}</dt>
+                                <dd className="mt-0.5 text-slate-800">{value || "—"}</dd>
+                              </div>
+                            ))}
+                          </dl>
                           <p className="mt-2 text-xs text-slate-700">
                             {services
                               .map(

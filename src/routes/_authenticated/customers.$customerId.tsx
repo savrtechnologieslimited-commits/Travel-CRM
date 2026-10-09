@@ -308,42 +308,61 @@ function readItemMetadata(metadata: Json): Record<string, Json | undefined> {
   return metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : {};
 }
 
-function VoucherControl({
+function BookingPaymentControl({
   customerId,
   itineraryId,
   item,
-  bookingPdf = false,
 }: {
   customerId: string;
   itineraryId: string;
   item: ItinerarySummaryItem;
-  bookingPdf?: boolean;
 }) {
   const queryClient = useQueryClient();
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploading, setUploading] = useState<"document" | "proof" | null>(null);
   const [error, setError] = useState<string | null>(null);
   const metadata = readItemMetadata(item.metadata);
-  const pathKey = bookingPdf ? "booking_pdf_path" : "voucher_path";
-  const nameKey = bookingPdf ? "booking_pdf_name" : "voucher_name";
-  const voucherPath = typeof metadata[pathKey] === "string" ? metadata[pathKey] : null;
-  const voucherName = typeof metadata[nameKey] === "string" ? metadata[nameKey] : null;
+  const documentPath =
+    typeof metadata["booking_document_path"] === "string"
+      ? metadata["booking_document_path"]
+      : typeof metadata["booking_pdf_path"] === "string"
+        ? metadata["booking_pdf_path"]
+        : typeof metadata["voucher_path"] === "string"
+          ? metadata["voucher_path"]
+          : null;
+  const documentName =
+    typeof metadata["booking_document_name"] === "string"
+      ? metadata["booking_document_name"]
+      : typeof metadata["booking_pdf_name"] === "string"
+        ? metadata["booking_pdf_name"]
+        : typeof metadata["voucher_name"] === "string"
+          ? metadata["voucher_name"]
+          : null;
+  const paymentProofPath =
+    typeof metadata["payment_proof_path"] === "string" ? metadata["payment_proof_path"] : null;
+  const paymentProofName =
+    typeof metadata["payment_proof_name"] === "string" ? metadata["payment_proof_name"] : null;
+  const paymentMode =
+    typeof metadata["payment_mode"] === "string" ? metadata["payment_mode"] : "";
+  const [savingPaymentMode, setSavingPaymentMode] = useState(false);
 
-  async function uploadVoucher(file: File) {
-    if (
-      bookingPdf &&
-      file.type !== "application/pdf" &&
-      !file.name.toLowerCase().endsWith(".pdf")
-    ) {
-      setError("Choose a PDF file for the booking document.");
+  async function uploadFile(file: File, kind: "document" | "proof") {
+    const isSupportedFile =
+      file.type === "application/pdf" ||
+      file.type.startsWith("image/") ||
+      /\.(pdf|jpe?g|png|webp)$/i.test(file.name);
+    if (!isSupportedFile) {
+      setError("Choose a PDF or image file.");
       return;
     }
-    setIsUploading(true);
+    setUploading(kind);
     setError(null);
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `${customerId}/${itineraryId}/${item.id}/${crypto.randomUUID()}-${safeName}`;
+    const pathKey = kind === "document" ? "booking_document_path" : "payment_proof_path";
+    const nameKey = kind === "document" ? "booking_document_name" : "payment_proof_name";
     try {
       const { error: uploadError } = await supabase.storage.from("itineraries").upload(path, file, {
-        contentType: file.type || (bookingPdf ? "application/pdf" : "application/octet-stream"),
+        contentType: file.type || "application/octet-stream",
         upsert: false,
       });
       if (uploadError) throw uploadError;
@@ -369,21 +388,21 @@ function VoucherControl({
       setError(
         uploadFailure instanceof Error
           ? uploadFailure.message
-          : bookingPdf
-            ? "Could not upload this booking PDF."
-            : "Could not upload this voucher.",
+          : kind === "document"
+            ? "Could not upload this booking document."
+            : "Could not upload payment proof.",
       );
     } finally {
-      setIsUploading(false);
+      setUploading(null);
     }
   }
 
-  async function openVoucher() {
-    if (!voucherPath) return;
+  async function openFile(path: string | null) {
+    if (!path) return;
     setError(null);
     const { data, error: signedUrlError } = await supabase.storage
       .from("itineraries")
-      .createSignedUrl(voucherPath, 3600);
+      .createSignedUrl(path, 3600);
     if (signedUrlError) {
       setError(signedUrlError.message);
       return;
@@ -391,43 +410,118 @@ function VoucherControl({
     window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   }
 
+  async function savePaymentMode(value: string) {
+    setSavingPaymentMode(true);
+    setError(null);
+    try {
+      const { error: updateError } = await supabase
+        .from("itinerary_day_items")
+        .update({ metadata: { ...metadata, payment_mode: value || null } })
+        .eq("id", item.id);
+      if (updateError) throw updateError;
+      await queryClient.invalidateQueries({
+        queryKey: ["customer-selected-itinerary-summaries"],
+      });
+    } catch (saveFailure) {
+      setError(
+        saveFailure instanceof Error ? saveFailure.message : "Could not save the payment mode.",
+      );
+    } finally {
+      setSavingPaymentMode(false);
+    }
+  }
+
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2">
-      <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
-        <Upload className="size-3.5" />
-        {isUploading
-          ? "Uploading…"
-          : bookingPdf
-            ? voucherPath
-              ? "Replace booking PDF"
-              : "Upload booking PDF"
-            : voucherPath
-              ? "Replace voucher"
-              : "Upload voucher"}
-        <input
-          type="file"
-          className="sr-only"
-          accept={bookingPdf ? ".pdf,application/pdf" : ".pdf,.jpg,.jpeg,.png,.webp"}
-          disabled={isUploading}
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void uploadVoucher(file);
-            event.currentTarget.value = "";
-          }}
-        />
-      </label>
-      {voucherPath && (
-        <Button
-          type="button"
-          variant="link"
-          size="sm"
-          className="h-auto p-0 text-xs"
-          onClick={() => void openVoucher()}
-        >
-          <ExternalLink className="mr-1 size-3.5" />
-          {voucherName || (bookingPdf ? "Open booking PDF" : "Open voucher")}
-        </Button>
-      )}
+    <div className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-slate-50/70 p-3">
+      <div className="space-y-1.5">
+        <p className="text-xs font-medium text-slate-700">Booking Document (Voucher/PDF)</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+            <Upload className="size-3.5" />
+            {uploading === "document"
+              ? "Uploading…"
+              : documentPath
+                ? "Replace booking document"
+                : "Upload booking document"}
+            <input
+              type="file"
+              className="sr-only"
+              accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
+              disabled={uploading !== null}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) void uploadFile(file, "document");
+                event.currentTarget.value = "";
+              }}
+            />
+          </label>
+          {documentPath && (
+            <Button
+              type="button"
+              variant="link"
+              size="sm"
+              className="h-auto p-0 text-xs"
+              onClick={() => void openFile(documentPath)}
+            >
+              <ExternalLink className="mr-1 size-3.5" />
+              {documentName || "Open booking document"}
+            </Button>
+          )}
+        </div>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-slate-700">Payment Proof</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+              <Upload className="size-3.5" />
+              {uploading === "proof"
+                ? "Uploading…"
+                : paymentProofPath
+                  ? "Replace proof"
+                  : "Upload proof"}
+              <input
+                type="file"
+                className="sr-only"
+                accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/*"
+                disabled={uploading !== null}
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  if (file) void uploadFile(file, "proof");
+                  event.currentTarget.value = "";
+                }}
+              />
+            </label>
+            {paymentProofPath && (
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto p-0 text-xs"
+                onClick={() => void openFile(paymentProofPath)}
+              >
+                <ExternalLink className="mr-1 size-3.5" />
+                {paymentProofName || "Open proof"}
+              </Button>
+            )}
+          </div>
+        </div>
+        <label className="space-y-1.5 text-xs font-medium text-slate-700">
+          Payment Mode
+          <select
+            className="block h-9 w-full rounded-md border border-slate-200 bg-white px-2.5 text-sm font-normal text-slate-900"
+            value={paymentMode}
+            disabled={savingPaymentMode}
+            onChange={(event) => void savePaymentMode(event.currentTarget.value)}
+          >
+            <option value="">Select payment mode</option>
+            <option value="Cash">Cash</option>
+            <option value="Bank">Bank</option>
+            <option value="Credit">Credit</option>
+            <option value="Other">Other</option>
+          </select>
+        </label>
+      </div>
       {error && (
         <p className="w-full text-xs text-rose-700" role="alert">
           {error}
@@ -445,6 +539,8 @@ type UploadedBookingDocument = {
   dayNumber: number;
   name: string;
   itineraryNumber: number;
+  path: string;
+  kind: "Booking document" | "Payment proof";
 };
 
 function getBookingDocumentCategory(item: ItinerarySummaryItem): BookingDocumentCategory {
@@ -456,11 +552,8 @@ function getBookingDocumentCategory(item: ItinerarySummaryItem): BookingDocument
 
 function UploadedBookingDocumentCard({ document }: { document: UploadedBookingDocument }) {
   const [error, setError] = useState<string | null>(null);
-  const metadata = readItemMetadata(document.item.metadata);
-  const path = typeof metadata["booking_pdf_path"] === "string" ? metadata["booking_pdf_path"] : "";
 
   async function openDocument() {
-    if (!path) return;
     setError(null);
     const newWindow = window.open("about:blank", "_blank");
     if (!newWindow) {
@@ -469,7 +562,7 @@ function UploadedBookingDocumentCard({ document }: { document: UploadedBookingDo
     }
     const { data, error: signedUrlError } = await supabase.storage
       .from("itineraries")
-      .createSignedUrl(path, 3600);
+      .createSignedUrl(document.path, 3600);
     if (signedUrlError) {
       newWindow.close();
       setError(signedUrlError.message);
@@ -483,12 +576,12 @@ function UploadedBookingDocumentCard({ document }: { document: UploadedBookingDo
       <div>
         <p className="text-sm font-medium text-slate-900">{document.name}</p>
         <p className="mt-0.5 text-xs text-slate-500">
-          Day {document.dayNumber} · {document.item.title || "Booking"}
+          {document.kind} · Day {document.dayNumber} · {document.item.title || "Booking"}
         </p>
       </div>
       <Button type="button" variant="outline" size="sm" onClick={() => void openDocument()}>
         <ExternalLink className="mr-1.5 size-3.5" />
-        View PDF
+        View file
       </Button>
       {error && (
         <p className="w-full text-xs text-rose-700" role="alert">
@@ -535,7 +628,10 @@ function ItineraryUploadedDocuments({ documents }: { documents: UploadedBookingD
           {documents
             .filter((document) => document.category === category)
             .map((document) => (
-              <UploadedBookingDocumentCard key={document.item.id} document={document} />
+              <UploadedBookingDocumentCard
+                key={`${document.item.id}-${document.kind}`}
+                document={document}
+              />
             ))}
         </TabsContent>
       ))}
@@ -674,8 +770,7 @@ function ItinerarySummaryCards({
             Open on MakeMyTrip
           </a>
         )}
-        <VoucherControl customerId={customerId} itineraryId={itinerary.id} item={item} />
-        <VoucherControl customerId={customerId} itineraryId={itinerary.id} item={item} bookingPdf />
+        <BookingPaymentControl customerId={customerId} itineraryId={itinerary.id} item={item} />
       </article>
     );
   }
@@ -936,23 +1031,60 @@ function CustomerDetailPage() {
   const summaryDays = selectedSummaries.data?.days ?? [];
   const uploadedBookingDocuments = (selectedSummaries.data?.items ?? []).flatMap((item) => {
     const metadata = readItemMetadata(item.metadata);
-    const path = metadata["booking_pdf_path"];
-    if (typeof path !== "string") return [];
     const day = summaryDays.find((entry) => entry.id === item.itinerary_day_id);
     const itinerary = finalizedItineraries.find((entry) => entry.id === day?.itinerary_id);
     if (!day || !itinerary) return [];
+    const base = {
+      itinerary,
+      item,
+      category: getBookingDocumentCategory(item),
+      dayNumber: day.day_number,
+      itineraryNumber: assignedItineraries.findIndex((entry) => entry.id === itinerary.id) + 1,
+    };
+    const bookingDocumentPath =
+      typeof metadata["booking_document_path"] === "string"
+        ? metadata["booking_document_path"]
+        : typeof metadata["booking_pdf_path"] === "string"
+          ? metadata["booking_pdf_path"]
+          : typeof metadata["voucher_path"] === "string"
+            ? metadata["voucher_path"]
+            : null;
+    const bookingDocumentName =
+      typeof metadata["booking_document_name"] === "string"
+        ? metadata["booking_document_name"]
+        : typeof metadata["booking_pdf_name"] === "string"
+          ? metadata["booking_pdf_name"]
+          : typeof metadata["voucher_name"] === "string"
+            ? metadata["voucher_name"]
+            : item.title || "Booking document";
+    const paymentProofPath =
+      typeof metadata["payment_proof_path"] === "string" ? metadata["payment_proof_path"] : null;
+    const paymentProofName =
+      typeof metadata["payment_proof_name"] === "string"
+        ? metadata["payment_proof_name"]
+        : item.title || "Payment proof";
+
     return [
-      {
-        itinerary,
-        item,
-        category: getBookingDocumentCategory(item),
-        dayNumber: day.day_number,
-        name:
-          typeof metadata["booking_pdf_name"] === "string"
-            ? metadata["booking_pdf_name"]
-            : item.title || "Booking PDF",
-        itineraryNumber: assignedItineraries.findIndex((entry) => entry.id === itinerary.id) + 1,
-      },
+      ...(bookingDocumentPath
+        ? [
+            {
+              ...base,
+              path: bookingDocumentPath,
+              name: bookingDocumentName,
+              kind: "Booking document" as const,
+            },
+          ]
+        : []),
+      ...(paymentProofPath
+        ? [
+            {
+              ...base,
+              path: paymentProofPath,
+              name: paymentProofName,
+              kind: "Payment proof" as const,
+            },
+          ]
+        : []),
     ];
   });
 
@@ -1264,7 +1396,9 @@ function CustomerDetailPage() {
             </div>
             {uploadedDocumentsOpen && !selectedSummaries.isLoading && (
               <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <h3 className="mb-3 text-sm font-semibold text-slate-900">Uploaded booking PDFs</h3>
+                <h3 className="mb-3 text-sm font-semibold text-slate-900">
+                  Uploaded booking documents and payment proofs
+                </h3>
                 <UploadedBookingDocuments documents={uploadedBookingDocuments} />
               </div>
             )}

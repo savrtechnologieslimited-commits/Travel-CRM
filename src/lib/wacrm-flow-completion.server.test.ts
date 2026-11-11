@@ -157,4 +157,39 @@ describe("WACRM flow completion request", () => {
     );
     expect(wacrmFlowCompletionSchema.safeParse({ ...validPayload, answers }).success).toBe(false);
   });
+
+  it("keeps inactivity and destination-selected notification events separate", () => {
+    const validPayload: unknown = JSON.parse(body);
+    if (!validPayload || typeof validPayload !== "object") {
+      throw new Error("Test payload is malformed.");
+    }
+
+    expect(wacrmFlowCompletionSchema.parse(validPayload)).toMatchObject({
+      inactivity_after_minutes: 20,
+      inactivity_notification: false,
+      destination_selected_notification: false,
+    });
+    expect(
+      wacrmFlowCompletionSchema.safeParse({
+        ...validPayload,
+        is_partial: true,
+        inactivity_notification: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      wacrmFlowCompletionSchema.safeParse({
+        ...validPayload,
+        is_partial: true,
+        destination_selected_notification: true,
+      }).success,
+    ).toBe(true);
+    expect(
+      wacrmFlowCompletionSchema.safeParse({
+        ...validPayload,
+        is_partial: true,
+        inactivity_notification: true,
+        destination_selected_notification: true,
+      }).success,
+    ).toBe(false);
+  });
 });

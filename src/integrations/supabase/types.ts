@@ -4634,6 +4634,25 @@ export type Database = {
           requirement_id: string;
         }[];
       };
+      notify_wacrm_flow_inactivity: {
+        Args: {
+          p_contact_name: string;
+          p_destination_id: string | null;
+          p_destination_name: string | null;
+          p_inactivity_minutes: number;
+          p_wacrm_run_id: string;
+        };
+        Returns: number;
+      };
+      notify_wacrm_flow_destination_selected: {
+        Args: {
+          p_contact_name: string;
+          p_destination_id: string | null;
+          p_destination_name: string | null;
+          p_wacrm_run_id: string;
+        };
+        Returns: number;
+      };
     };
     Enums: {
       app_role:

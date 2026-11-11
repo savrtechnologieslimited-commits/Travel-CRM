@@ -2,7 +2,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { cleanEnvironmentValue } from "./environment-value";
 
-export const wacrmFlowCompletionSchema = z.object({
+export const wacrmFlowCompletionSchema = z
+  .object({
   version: z.literal(1),
   flow_run_id: z.string().uuid(),
   flow_id: z.string().uuid(),
@@ -12,6 +13,10 @@ export const wacrmFlowCompletionSchema = z.object({
   completed_at: z.string().datetime(),
   is_partial: z.boolean().optional(),
   handoff_requested: z.boolean().optional(),
+  notify_on_completion: z.boolean().default(true),
+  inactivity_after_minutes: z.number().int().min(1).max(10_080).default(20),
+  inactivity_notification: z.boolean().default(false),
+  destination_selected_notification: z.boolean().default(false),
   contact: z.object({
     name: z.string().trim().max(200).nullable(),
     email: z.string().trim().email().max(254).nullable(),
@@ -27,8 +32,12 @@ export const wacrmFlowCompletionSchema = z.object({
     })
     .nullable()
     .optional(),
-  answers: z.record(z.unknown()).refine((answers) => Object.keys(answers).length <= 50),
-});
+    answers: z.record(z.unknown()).refine((answers) => Object.keys(answers).length <= 50),
+  })
+  .refine(
+    (payload) => !(payload.inactivity_notification && payload.destination_selected_notification),
+    { message: "Only one flow notification event may be sent at a time." },
+  );
 
 export const WACRM_FLOW_COMPLETION_MAX_BODY_BYTES = 64 * 1024;
 

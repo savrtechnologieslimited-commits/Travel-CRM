@@ -44,6 +44,77 @@ async function receiveFlowCompletion(request: Request): Promise<Response> {
     return Response.json({ error: "Completed flow data is invalid." }, { status: 400 });
   }
   const completion = parsed.data;
+  if (completion.destination_selected_notification) {
+    if (!completion.is_partial) {
+      return Response.json(
+        { error: "Destination-selected notifications must be partial." },
+        { status: 400 },
+      );
+    }
+    const rawDestinationName = completion.answers["destination_name"];
+    const { data: notificationCount, error: notificationError } = await supabaseAdmin.rpc(
+      "notify_wacrm_flow_destination_selected",
+      {
+        p_wacrm_run_id: completion.flow_run_id,
+        p_contact_name:
+          completion.contact.name ??
+          completion.contact.phone ??
+          completion.contact.email ??
+          "WhatsApp customer",
+        p_destination_id: completion.destination?.id ?? null,
+        p_destination_name:
+          completion.destination?.name ??
+          (typeof rawDestinationName === "string" ? rawDestinationName.trim().slice(0, 200) : null),
+      },
+    );
+    if (notificationError) {
+      console.error("[wacrm-flow-completed] Destination-selected notification failed:", {
+        code: notificationError.code,
+        message: notificationError.message,
+      });
+      return Response.json(
+        { error: "The destination-selected notification could not be saved." },
+        { status: 500 },
+      );
+    }
+    return Response.json({
+      destination_selected_notification: true,
+      notification_count: notificationCount,
+    });
+  }
+  if (completion.inactivity_notification) {
+    if (!completion.is_partial) {
+      return Response.json({ error: "Inactivity notifications must be partial." }, { status: 400 });
+    }
+    const rawDestinationName = completion.answers["destination_name"];
+    const { data: notificationCount, error: notificationError } = await supabaseAdmin.rpc(
+      "notify_wacrm_flow_inactivity",
+      {
+        p_wacrm_run_id: completion.flow_run_id,
+        p_contact_name:
+          completion.contact.name ??
+          completion.contact.phone ??
+          completion.contact.email ??
+          "WhatsApp customer",
+        p_destination_id: completion.destination?.id ?? null,
+        p_destination_name:
+          completion.destination?.name ??
+          (typeof rawDestinationName === "string" ? rawDestinationName.trim().slice(0, 200) : null),
+        p_inactivity_minutes: completion.inactivity_after_minutes,
+      },
+    );
+    if (notificationError) {
+      console.error("[wacrm-flow-completed] Inactivity notification failed:", {
+        code: notificationError.code,
+        message: notificationError.message,
+      });
+      return Response.json(
+        { error: "The inactivity notification could not be saved." },
+        { status: 500 },
+      );
+    }
+    return Response.json({ inactivity_notification: true, notification_count: notificationCount });
+  }
   if (!completion.contact.phone && !completion.contact.email) {
     return Response.json(
       { error: "A phone number or email is required to link this customer." },
